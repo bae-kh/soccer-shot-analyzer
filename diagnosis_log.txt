@@ -1,0 +1,33 @@
+Starting diagnosis on 4 files...
+------------------------------------------------------------
+Analyzing e34dd928-f188-4341-ba8c-072ca4003cfe.mp4...
+DEBUG: Track Lost (Missed 10 frames). Resetting. State: 10
+DEBUG: Track Lost (Missed 10 frames). Resetting. State: 10
+DEBUG: Impact Detected via Angle/Speed! Stopping.
+Result for e34dd928-f188-4341-ba8c-072ca4003cfe.mp4:
+  Score: 64
+  Speed: 96.7 km/h
+  Trajectory Points: 59
+------------------------------------------------------------
+Analyzing c3bd806b-2336-4e83-bc92-bb06461bf4c4.mp4...
+DEBUG: Impact Detected via Angle/Speed! Stopping.
+Result for c3bd806b-2336-4e83-bc92-bb06461bf4c4.mp4:
+  Score: 32
+  Speed: 22.5 km/h
+  Trajectory Points: 59
+------------------------------------------------------------
+Analyzing 09515148-7bcd-41cf-ab40-60e22132f6ba.mp4...
+DEBUG: Impact Detected via Angle/Speed! Stopping.
+Result for 09515148-7bcd-41cf-ab40-60e22132f6ba.mp4:
+  Score: 34
+  Speed: 30.5 km/h
+  Trajectory Points: 59
+------------------------------------------------------------
+Analyzing 0d67d7f2-b178-4a42-9831-17eb4a743128.mp4...
+DEBUG: Track Lost (Missed 10 frames). Resetting. State: 10
+DEBUG: Impact Detected via Angle/Speed! Stopping.
+Result for 0d67d7f2-b178-4a42-9831-17eb4a743128.mp4:
+  Score: 49
+  Speed: 60.5 km/h
+  Trajectory Points: 59
+------------------------------------------------------------
