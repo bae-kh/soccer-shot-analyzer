@@ -3,8 +3,7 @@
 > **"당신의 슈팅 속도는 몇 km/h 입니까?"**  
 > 단일 카메라 영상만으로 축구 공의 3D 궤적을 추적하고, 슈팅 속도와 골 성공 여부를 분석하는 AI 웹 서비스입니다.
 
-![Demo](https://velog.velcdn.com/images/example/post/1234/demo.gif)
-*(여기에 실제 시연 GIF나 스크린샷을 추가하면 100배 더 매력적입니다!)*
+
 
 ## 🚀 Key Features (주요 기능)
 
