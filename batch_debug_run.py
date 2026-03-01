@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from backend.analyze_shot import SoccerAnalyzer
+from backend.analyze_shot import ProShootingAnalyzer
 
 def test_batch():
     upload_dir = "backend/uploads"
@@ -18,11 +18,11 @@ def test_batch():
         
         try:
             # Instantiate manually like in debug_run.py
-            analyzer = SoccerAnalyzer()
+            analyzer = ProShootingAnalyzer()
             result = analyzer.run(input_path, output_path)
             
             score = result.get('score', 0)
-            speed = result.get('speed_kmh', 0)
+            speed = result.get('speed', 0)
             print(f"{target:<40} | {score:<5} | {speed:<5}")
         except Exception as e:
             print(f"{target:<40} | ERROR | {e}")

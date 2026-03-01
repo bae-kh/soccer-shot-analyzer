@@ -1,0 +1,101 @@
+
+========================================
+--- Running Debug on backend/backend/uploads/video4.mp4 ---
+[INFO] Video Loaded: backend/backend/uploads/video4.mp4, Frames: 307, FPS: 30.0
+[INFO] Goal Detected! Area: 44246.5
+[INFO] Fallback: Calibrated F_px via Goal Match: 2131.1
+[INFO] Final active Calibration Source: Environment (Goal Match)
+[INFO] Performing pre-flight sweep for static objects...
+[INFO] Global Pre-Blacklisted Background Object at (288, 279)
+[INFO] Global Pre-Blacklisted Background Object at (375, 200)
+[INFO] Starting Main Tracking Loop...
+[INFO] Processing Frame 30/307
+[INFO] Processing Frame 60/307
+[INFO] Processing Frame 90/307
+[INFO] Processing Frame 120/307
+[DEBUG] Frame 139: YOLO cls 32 conf=0.50, u=278.2, pred_u=320.0, dist=81.9, gate=120
+[DEBUG] Frame 140: YOLO cls 32 conf=0.64, u=276.2, pred_u=320.0, dist=77.8, gate=120
+[DEBUG] Frame 141: YOLO cls 32 conf=0.76, u=274.3, pred_u=320.0, dist=74.2, gate=120
+[DEBUG] Frame 141: YOLO cls 32 conf=0.12, u=275.7, pred_u=320.0, dist=79.5, gate=120
+[DEBUG] Frame 142: YOLO cls 32 conf=0.77, u=274.4, pred_u=320.0, dist=74.1, gate=120
+[DEBUG] Frame 142: YOLO cls 32 conf=0.10, u=275.8, pred_u=320.0, dist=79.4, gate=120
+[DEBUG] Frame 143: YOLO cls 32 conf=0.78, u=274.3, pred_u=320.0, dist=74.2, gate=120
+[DEBUG] Frame 143: YOLO cls 32 conf=0.10, u=275.8, pred_u=320.0, dist=79.4, gate=120
+[DEBUG] Frame 144: YOLO cls 32 conf=0.21, u=268.7, pred_u=320.0, dist=69.0, gate=120
+[DEBUG] Frame 145: YOLO cls 32 conf=0.24, u=268.7, pred_u=320.0, dist=68.3, gate=120
+[DEBUG] Frame 146: YOLO cls 32 conf=0.19, u=266.0, pred_u=320.0, dist=68.7, gate=120
+[INFO] Processing Frame 150/307
+[INFO] Net Hit/Stop Detected (Speed dropped). Saving Track...
+[INFO] Processing Frame 180/307
+[DEBUG] Frame 200: YOLO cls 32 conf=0.07, u=285.1, pred_u=259.0, dist=27.3, gate=200
+[DEBUG] Frame 200: Recovered tracking!
+[INFO] Processing Frame 210/307
+[DEBUG] Frame 210: YOLO cls 32 conf=0.08, u=248.0, pred_u=280.0, dist=33.7, gate=200
+[DEBUG] Frame 210: YOLO cls 32 conf=0.06, u=279.1, pred_u=280.0, dist=4.0, gate=200
+[DEBUG] Frame 210: Recovered tracking!
+[DEBUG] Frame 216: YOLO cls 32 conf=0.10, u=276.2, pred_u=275.0, dist=2.5, gate=200
+[DEBUG] Frame 216: Recovered tracking!
+[DEBUG] Frame 221: YOLO cls 32 conf=0.05, u=270.4, pred_u=274.0, dist=4.6, gate=200
+[DEBUG] Frame 221: Recovered tracking!
+[INFO] Net Hit/Stop Detected (Speed dropped). Saving Track...
+[INFO] Processing Frame 240/307
+[DEBUG] Frame 240: YOLO cls 32 conf=0.16, u=254.4, pred_u=258.0, dist=7.0, gate=200
+[DEBUG] Frame 240: Recovered tracking!
+[INFO] Processing Frame 270/307
+[INFO] Processing Frame 300/307
+[INFO] Tracking Failed/Finished. Total Trajectory Points: 0
+[DEBUG] Track 0: Pts=28, Dist=4.9m, MaxVel=16.9m/s -> Score=83.7
+[DEBUG] Track 1: Pts=45, Dist=7.2m, MaxVel=11.6m/s -> Score=83.5
+[DEBUG] Track 2: Pts=8, Dist=2.6m, MaxVel=8.4m/s -> Score=22.3
+[INFO] Selected best track with 28 pts.
+[DEBUG] Max Instantaneous Smoothed Speed: 70.6 km/h
+[DEBUG] Average Linear Speed: 29.0 km/h
+[Results] Final Processed Speed: 70.6 km/h
+
+[Final Result]
+{'score': 57, 'speed': 70.6, 'comment': '媛뺣젰???덊똿(70.6km/h), 怨⑥씤?낅땲?? ?럦', 'trajectory_image': 'video4_debug_result.jpg'}
+
+========================================
+--- Running Debug on backend/backend/uploads/video11.mp4 ---
+[INFO] Video Loaded: backend/backend/uploads/video11.mp4, Frames: 107, FPS: 30.0
+[INFO] Goal Detected! Area: 29965.5
+[INFO] Fallback: Calibrated F_px via Goal Match: 1191.3
+[INFO] Final active Calibration Source: Environment (Goal Match)
+[INFO] Performing pre-flight sweep for static objects...
+[INFO] Global Pre-Blacklisted Background Object at (326, 309)
+[INFO] Starting Main Tracking Loop...
+[DEBUG] Frame 5: YOLO cls 32 conf=0.06, u=563.2, pred_u=563.0, dist=0.5, gate=200
+[DEBUG] Frame 5: Recovered tracking!
+[DEBUG] Frame 7: YOLO cls 32 conf=0.09, u=563.2, pred_u=563.0, dist=0.6, gate=200
+[DEBUG] Frame 7: Recovered tracking!
+[DEBUG] Frame 19: YOLO cls 32 conf=0.05, u=563.0, pred_u=563.0, dist=0.6, gate=200
+[DEBUG] Frame 19: Recovered tracking!
+[INFO] Stuck on static object. Blacklisting (563, 348) and restarting tracker.
+[DEBUG] Frame 23: YOLO cls 32 conf=0.06, u=383.2, pred_u=249.0, dist=134.2, gate=120
+[DEBUG] Frame 23: Rejected box due to distance gate (134.2 > 120)
+[DEBUG] Frame 27: YOLO cls 32 conf=0.24, u=222.6, pred_u=249.0, dist=34.9, gate=120
+[DEBUG] Frame 27: Recovered tracking!
+[INFO] Processing Frame 30/107
+[DEBUG] Frame 30: YOLO cls 32 conf=0.10, u=263.9, pred_u=225.0, dist=39.0, gate=200
+[DEBUG] Frame 30: Recovered tracking!
+[DEBUG] Frame 33: YOLO cls 32 conf=0.56, u=265.1, pred_u=305.0, dist=52.1, gate=120
+[DEBUG] Frame 33: YOLO cls 32 conf=0.04, u=257.3, pred_u=305.0, dist=53.1, gate=120
+[DEBUG] Frame 34: YOLO cls 32 conf=0.10, u=274.0, pred_u=307.0, dist=52.2, gate=120
+[DEBUG] Frame 36: YOLO cls 32 conf=0.17, u=300.3, pred_u=313.0, dist=25.8, gate=200
+[DEBUG] Frame 36: Recovered tracking!
+[DEBUG] Frame 38: YOLO cls 32 conf=0.68, u=327.0, pred_u=311.0, dist=16.0, gate=200
+[DEBUG] Frame 38: YOLO cls 32 conf=0.04, u=326.3, pred_u=311.0, dist=16.9, gate=200
+[DEBUG] Frame 38: Recovered tracking!
+[DEBUG] Frame 42: YOLO cls 32 conf=0.05, u=323.7, pred_u=339.0, dist=15.6, gate=200
+[DEBUG] Frame 42: Recovered tracking!
+[INFO] Processing Frame 60/107
+[INFO] Processing Frame 90/107
+[INFO] Tracking Failed/Finished. Total Trajectory Points: 2
+[DEBUG] Track 0: Pts=13, Dist=3.0m, MaxVel=10.3m/s -> Score=31.0
+[INFO] Selected best track with 13 pts.
+[DEBUG] Max Instantaneous Smoothed Speed: 56.8 km/h
+[DEBUG] Average Linear Speed: 15.5 km/h
+[Results] Final Processed Speed: 56.8 km/h
+
+[Final Result]
+{'score': 48, 'speed': 56.8, 'comment': '?꾩돩???띾룄(56.8km/h), 怨⑥씤?낅땲?? ?럦', 'trajectory_image': 'video11_debug_result.jpg'}

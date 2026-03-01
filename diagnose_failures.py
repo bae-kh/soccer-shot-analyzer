@@ -1,7 +1,7 @@
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from backend.analyze_shot import SoccerAnalyzer
+from backend.analyze_shot import ProShootingAnalyzer
 
 def diagnose_failures():
     # List of reported problematic videos
@@ -28,14 +28,14 @@ def diagnose_failures():
         print(f"Analyzing {filename}...")
         
         try:
-            analyzer = SoccerAnalyzer()
+            analyzer = ProShootingAnalyzer()
             # We want to see debug prints, so we won't capture stdout/stderr here, just let it print to console
             # or we could modify analyzer to return more debug info, but console log is fastest for now.
             result = analyzer.run(input_path, output_path)
             
             print(f"Result for {filename}:")
             print(f"  Score: {result.get('score')}")
-            print(f"  Speed: {result.get('speed_kmh')} km/h")
+            print(f"  Speed: {result.get('speed')} km/h")
             print(f"  Trajectory Points: {len(result.get('trajectory_image', ''))}") # Just checking if image generated
             
             # Since analyzer.run stores trajectory in self.trajectory, we can inspect it if we had access, 
