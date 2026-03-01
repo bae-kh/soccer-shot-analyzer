@@ -36,7 +36,7 @@ class ProShootingAnalyzer:
         # Absolute path fix (Robust based on file location)
         current_dir = os.path.dirname(os.path.abspath(__file__))
         model_path = os.path.join(current_dir, 'goal_segment_best.pt')
-        yolo_path = os.path.join(current_dir, 'yolov8n.pt')
+        yolo_path = os.path.join(current_dir, 'yolov8s.pt')
         
         try:
             self.goal_model = YOLO(model_path)
@@ -324,8 +324,7 @@ class ProShootingAnalyzer:
                 PROCESS_H = int(height * scale)
                 frame_process = cv2.resize(frame, (PROCESS_W, PROCESS_H))
                 
-                # Lower confidence to catch motion blur, but filter below
-                results = self.model(frame_process, imgsz=640, verbose=False, conf=0.04)
+                results = self.model(frame_process, imgsz=640, verbose=False, conf=0.1)
                 
                 best_box = None
                 max_conf = -1
@@ -342,12 +341,6 @@ class ProShootingAnalyzer:
                         # Standard YOLO Class 32: Sports ball
                         if int(box.cls[0]) == 32: 
                             conf = float(box.conf[0])
-                            
-                            # Hysteresis Thresholding:
-                            # 1. To start tracking, require HIGH confidence (no blurry birds/shoes)
-                            # 2. To maintain tracking, LOW confidence is fine (fast motion blur)
-                            if not self.initialized and conf < 0.02: # Changed from 0.1 to 0.02 to allow heavy blur
-                                continue
                                 
                             u, v, w, h = box.xywh[0].cpu().numpy() # Center u,v and w,h in Process coords
                             
@@ -356,10 +349,7 @@ class ProShootingAnalyzer:
                             
                             if self.initialized:
                                 # Distance Gate in Pixels
-                                if len(self.trajectory_3d) < 3:
-                                    gate_size = 120 
-                                else:
-                                    gate_size = 200 if missed_frames > 0 else 120 
+                                gate_size = 150
                                 
                                 dist = np.sqrt((u-pred_u)**2 + (v-pred_v)**2)
                                 
@@ -447,45 +437,6 @@ class ProShootingAnalyzer:
                     self.velocities.append(speed_mps)
                     self.timestamps.append(frame_idx / fps)
                     
-                    # ANTI-STATIC LOCK FIX (Re-added)
-                    if len(self.velocities) > 15 and np.mean(self.velocities[-15:]) < 1.0:
-                        print(f"[INFO] Stuck on static object. Blacklisting ({int(u)}, {int(v)}) and restarting tracker.")
-                        self.known_static_objects.append((int(u), int(v)))
-                        self.initialized = False
-                        self.trajectory_3d = []
-                        self.velocities = []
-                        self.timestamps = []
-                        continue
-                            
-                    # --- Net Hit / Stop Detection ---
-                    if len(self.velocities) > 15:
-                        max_inv_speed = np.max(self.velocities)
-                        if max_inv_speed > 10.0 and speed_mps < max_inv_speed * 0.3:
-                            recent_speed = np.mean(self.velocities[-3:])
-                            if recent_speed < max_inv_speed * 0.2:
-                                print("[INFO] Net Hit/Stop Detected (Speed dropped). Saving Track...")
-                                self.saved_tracks.append((list(self.trajectory_3d), list(self.velocities), list(self.timestamps), list(self.trajectory_draw)))
-                                self.initialized = False
-                                self.trajectory_3d = []
-                                self.velocities = []
-                                self.timestamps = []
-                                self.trajectory_draw = []
-                                missed_frames = 0
-                                continue
-                            
-                    # --- Distance Limit (Depth) ---
-                    if curr_z > 25.0:
-                        print(f"[INFO] Distance Limit Exceeded ({curr_z:.1f}m). Saving Track...")
-                        if len(self.velocities) > 5:
-                            self.saved_tracks.append((list(self.trajectory_3d), list(self.velocities), list(self.timestamps), list(self.trajectory_draw)))
-                        self.initialized = False
-                        self.trajectory_3d = []
-                        self.velocities = []
-                        self.timestamps = []
-                        self.trajectory_draw = []
-                        missed_frames = 0
-                        continue
-                    
                     # Store Draw coords
                     if curr_z > 0.1:
                         draw_u = int((curr_x * F_proc) / curr_z + cx)
@@ -499,7 +450,7 @@ class ProShootingAnalyzer:
                 else:
                     if self.initialized:
                         missed_frames += 1
-                        if missed_frames > 15:
+                        if missed_frames > 5:
                             break # Lost
 
         except Exception as e:
