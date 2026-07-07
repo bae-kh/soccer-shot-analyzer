@@ -22,7 +22,10 @@
 
 ### Demo Video
 
-[![Demo Video](assets/demo.mp4)]
+
+https://github.com/user-attachments/assets/626872b0-3773-477d-a31d-f6dd5e4a7fcd
+
+
 ### Screenshots
 
 | Upload Page | Result Page |
