@@ -6,10 +6,14 @@ import sys
 def run_app():
     print("🚀 축구 슈팅 분석기 MVP를 시작합니다...")
     
+    # capstone 환경의 파이썬 강제 지정
+    capstone_python = r"C:\anaconda3\envs\capstone\python.exe"
+    python_exe = capstone_python if os.path.exists(capstone_python) else sys.executable
+    
     # Backend 실행
     print("Backend 서버 시작 중 (Port 8000)...")
     backend_process = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "main:app", "--reload"],
+        [python_exe, "-m", "uvicorn", "main:app", "--reload"],
         cwd=os.path.join(os.getcwd(), "backend"),
         shell=True
     )

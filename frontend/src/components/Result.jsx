@@ -25,7 +25,7 @@ export default function Result({ data, onReset }) {
                 </div>
                 <div className="bg-slate-800 border border-slate-700/50 p-5 rounded-xl text-center shadow-inner relative overflow-hidden">
                     <div className="absolute -left-4 -top-4 w-16 h-16 bg-emerald-500/10 rounded-full blur-xl"></div>
-                    <p className="text-sm text-slate-400 mb-1 font-light tracking-wider">최고 속도</p>
+                    <p className="text-sm text-slate-400 mb-1 font-light tracking-wider">추정 최고 속도</p>
                     <div className="text-4xl font-black text-emerald-400 drop-shadow-[0_0_12px_rgba(52,211,153,0.6)]">
                         {Number(data.speed).toFixed(1)}<span className="text-lg text-slate-500 ml-1">km/h</span>
                     </div>

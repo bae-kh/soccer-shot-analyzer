@@ -138,17 +138,17 @@ export default function Upload({ onUploadStart, onAnalysisComplete, onProgress, 
             {!loading && (
                 <div className="mt-8 bg-slate-800/80 rounded-xl p-5 border border-emerald-500/30 shadow-[0_0_15px_rgba(0,0,0,0.5)]">
                     <h3 className="text-emerald-400 font-bold mb-3 flex items-center text-lg">
-                        <span className="mr-2 text-xl shadow-emerald-400/50">💡</span> 정확한 측정 가이드
+                        <span className="mr-2 text-xl shadow-emerald-400/50">💡</span> 속도 및 궤적 추정 가이드
                     </h3>
                     <ul className="text-slate-300 text-sm space-y-3 list-disc pl-5 font-light tracking-wide">
                         <li>
-                            <strong className="text-emerald-300 font-semibold drop-shadow-sm">카메라 고정 필수:</strong> 렌즈가 움직이면 속도가 부풀려집니다. 삼각대나 기둥을 사용하세요.
+                            <strong className="text-emerald-300 font-semibold drop-shadow-sm">카메라 고정 필수:</strong> 렌즈가 움직이면 속도가 과대 계산될 수 있습니다. 삼각대나 기둥을 사용하세요.
                         </li>
                         <li>
                             <strong className="text-emerald-300 font-semibold drop-shadow-sm">화각 확보:</strong> 영상 안에서 골대 전체 윤곽이 멀리서 한눈에 들어오게 찍어주세요.
                         </li>
                         <li>
-                            <strong className="text-emerald-300 font-semibold drop-shadow-sm">스마트폰 자동 인식:</strong> 분석기가 영상을 올리기만 해도 <span className="text-cyan-300">내부 렌즈 데이터를 자동으로 추출(Auto-Calib)</span>하여 오차를 줄입니다.
+                            <strong className="text-emerald-300 font-semibold drop-shadow-sm">스마트폰 자동 인식:</strong> 분석기가 영상을 올리기만 해도 <span className="text-cyan-300">내부 렌즈 데이터를 자동으로 추출(Auto-Calib)</span>하여 궤적 보정에 활용합니다.
                         </li>
                     </ul>
                 </div>

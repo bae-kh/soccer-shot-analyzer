@@ -1,54 +1,91 @@
-# Python
+# Python 캐시 및 가상환경
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual Environment
 venv/
+.venv/
 env/
 ENV/
 .env
 
-# Node.js
+# Node.js 패키지 및 빌드
 node_modules/
-npm-debug.log
-yarn-error.log
-.pnpm-debug.log
 dist/
 build/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# IDEs
+# IDE 설정 및 시스템 캐시
 .vscode/
 .idea/
 *.swp
+*.swo
+.DS_Store
+Thumbs.db
 
-# Media & Logs
-*.log
-*.mp4
-*.avi
-*.mov
+# 대용량 AI/CV 모델 가중치 파일 (Github 용량 방지)
+*.pt
+*.pth
+
+# 사용자 업로드 및 미디어 폴더
 uploads/
 temp/
 backend/uploads/
+backend/backend/uploads/
+soccer_videos/
+*.mp4
+*.avi
+*.mov
 
-# Large Models (Optional - keep these if you want to share them, but usually too big for free Git LFS)
-# *.pt
-# *.pth
+# 로컬 카메라 보정 부산물
+backend/calibration.json
+calibration.json
+
+# 임시 생성 이미지 및 디버그 플롯 파일
+check_video*.jpg
+debug_video*.jpg
+out_local_video*.jpg
+out_video*.jpg
+output_test.jpg
+test_output.jpg
+test_debug_track.jpg
+debug_yolo_frames/
+
+# 로컬 개발 및 디버그/테스트 로그 파일 (*.txt)
+*.log
+*.txt
+analysis_log.txt
+debug_log.txt
+diagnosis_log.txt
+full_test_log.txt
+test_final_log.txt
+vid4_debug.log
+check_all_results.txt
+diff_output.txt
+dual_video_log.txt
+final_test*.txt
+manual_test_log.txt
+old_test_run.txt
+out*.txt
+fixed_video11_log.txt
+
+# 로컬 일회성 디버그/테스트 스크립트
+check_all.py
+check_fixes.py
+check_v5_conf.py
+check_v125.py
+check_v5.py
+debug_*.py
+diagnose_*.py
+test_*.py
+upload_test.py
+batch_*.py
+verify_fix.py
+deep_verify.py
+run_test_local.py
+analyze_shot_0ae905e.py
+backend/analyze_shot_v1_backup.py

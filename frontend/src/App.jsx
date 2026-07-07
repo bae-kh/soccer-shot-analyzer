@@ -40,7 +40,7 @@ function App() {
         <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-emerald-400 mb-3 drop-shadow-[0_0_15px_rgba(52,211,153,0.3)] tracking-tight">
           PRO SHOT ANALYZER ⚽
         </h1>
-        <p className="text-slate-400 text-lg font-light tracking-wide">정밀 타격 궤적 및 구속 분석 시스템</p>
+        <p className="text-slate-400 text-lg font-light tracking-wide">축구 슈팅 궤적 및 속도 추정 프로토타입</p>
       </header>
 
       <main className="w-full max-w-md bg-slate-800/80 backdrop-blur-lg border border-slate-700/50 rounded-2xl shadow-[0_0_40px_rgba(16,185,129,0.1)] overflow-hidden p-6 transition-all duration-500">

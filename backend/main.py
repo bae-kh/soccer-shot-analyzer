@@ -30,7 +30,8 @@ async def analyze_stream(file: UploadFile = File(...)):
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    output_image_path = file_path.replace(".mp4", "_result.jpg")
+    base_name = os.path.splitext(file.filename)[0]
+    output_image_path = os.path.join(UPLOAD_DIR, f"{base_name}_result.jpg")
     
     # Queue for Progress
     queue = asyncio.Queue()
