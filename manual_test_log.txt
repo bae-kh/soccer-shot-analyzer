@@ -1,8 +1,0 @@
-Testing analysis on: C:\Users\qorkd\.gemini\異뺢뎄?덊똿痢≪젙\backend\uploads\52f422b3-7542-436e-8730-47f45b913067.mp4
-Progress: 1%
-DEBUG: First Frame Captured (1080, 1920, 3)
-DEBUG: Trajectory Length: 4
-Progress: 100%
-
---- Analysis Result ---
-{'score': 0, 'speed_kmh': 0.0, 'trajectory_image': '52f422b3-7542-436e-8730-47f45b913067_manual_test.jpg'}
