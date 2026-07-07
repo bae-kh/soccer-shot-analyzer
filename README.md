@@ -22,8 +22,7 @@
 
 ### Demo Video
 
-[![Demo Video](assets/result_screen.png)](assets/demo.mp4)
-
+[![Demo Video](assets/demo.mp4)]
 ### Screenshots
 
 | Upload Page | Result Page |
