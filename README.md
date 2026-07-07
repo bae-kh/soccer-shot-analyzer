@@ -1,100 +1,103 @@
-# ⚽ AI Soccer Shot Analyzer (축구 슈팅 분석기)
+# AI Agent-based Soccer Shooting Analysis Prototype
 
-**"당신의 슈팅 속도는 몇 km/h 입니까?"** 단일 카메라(Monocular Camera) 영상만으로 축구공의 3D 궤적을 추적하고, 슈팅 속도와 골 성공 여부를 정밀하게 분석하는 AI 웹 서비스입니다.
+단일 카메라로 촬영한 축구 슈팅 영상에서 공의 2D 이동을 추적하고, 카메라 보정 정보와 단순화된 물리 모델을 활용해 속도와 궤적을 추정·시각화하는 웹 서비스 프로토타입입니다.
 
-## 🎥 Demo & UI
+이 프로젝트는 정밀 스포츠 계측 시스템이 아니라, **AI Agent를 활용해 CV 분석 파이프라인과 FastAPI 기반 웹 서비스 흐름을 빠르게 프로토타이핑한 보조 포트폴리오**입니다.
 
+---
 
+## 1. Project Summary
 
-https://github.com/user-attachments/assets/93b3ed67-0f2a-4ccc-af72-0925b961d455
+- **Backend**: FastAPI, Uvicorn, Python-multipart
+- **AI & CV**: YOLOv8, Custom YOLOv8-seg, OpenCV, CSRT Tracker
+- **Scientific Computing**: SciPy, NumPy
+- **Frontend**: React, Vite, Tailwind CSS
+- **Purpose**: 영상 업로드, AI/CV 분석, 진행률 스트리밍, 결과 시각화를 하나의 웹 서비스 흐름으로 연결하는 프로토타입 구현
 
+---
 
-## 🚀 Key Features
+## 2. Scope & Boundaries
 
-### 1. Monocular 3D Trajectory Estimation & Tracking
-- **2D to 3D Inference:** 단일 카메라 영상에서 바운딩 박스의 크기 변화(Scale)를 분석하여 깊이(Depth)를 포함한 3D 좌표(x, y, z)를 추정합니다.
-- **Kalman Filter Integration:** 공이 플레이어에 의해 가려지거나(Occlusion) 객체 인식이 불안정한 구간에서도 **Kalman Filter**를 적용하여 물리적으로 자연스럽고 부드러운 궤적을 복원합니다.
+본 프로젝트는 단일 카메라 기반 분석이므로 깊이 축에 대한 모호성(Depth Ambiguity)이 존재합니다. 또한 레이더 건, IMU, 멀티뷰 카메라 등 Ground Truth 장비와 비교 검증한 것이 아니므로, 산출되는 속도와 궤적은 정밀 측정값이 아니라 **추정값**입니다.
 
-### 2. Robust Speed Measurement
-- **Linear Regression Analysis:** 단순 프레임 간 픽셀 이동 거리가 아닌, 전체 3D 궤적 데이터에 대한 **선형 회귀(Linear Regression)** 분석을 수행하여 아웃라이어(노이즈)에 강건한 정밀 슈팅 속도(km/h)를 산출합니다.
+### 저장소 기준 확인 가능한 구현 범위
 
-### 3. Smart Goal Detection & Scoring
-- **Custom YOLOv8-seg:** 직접 수집하고 라벨링한 데이터셋으로 파인튜닝된 Instance Segmentation 모델이 골대(그물, 기둥)의 형태를 픽셀 단위로 정밀하게 분할(Segmentation)합니다.
-- **Corner Score System:** 슈팅 궤적이 골대의 구석(사각지대)으로 향할수록 가중치를 부여하는 정교한 공간 채점 알고리즘을 구현했습니다.
+- **YOLOv8 기반 공 검출**
+  - 사전 학습 YOLOv8 모델을 활용해 영상 내 sports ball 후보를 탐지합니다.
 
-## 🛠 Tech Stack
+- **YOLOv8-seg 기반 골대 영역 추정**
+  - 커스텀 골대 세그멘테이션 모델을 활용해 골대 영역을 탐지하고, 표준 골대 너비를 기준으로 scale estimation에 활용합니다.
 
-| Category | Technologies |
-| :--- | :--- |
-| **Frontend** | React, Vite, Tailwind CSS |
-| **Backend** | Python, FastAPI |
-| **AI / CV** | YOLOv8 (Detection & Segmentation), OpenCV, NumPy |
-| **Algorithms** | Kalman Filter, Linear Regression, Morphological Operations |
+- **YOLO + CSRT Hybrid Tracking**
+  - YOLO 검출이 불안정한 구간에서 OpenCV CSRT tracker를 사용해 공 위치 추적을 보완합니다.
 
-## 🧩 Trouble Shooting & Engineering
+- **Trajectory / Speed Estimation**
+  - 중력과 단순화된 횡가속도 항을 포함한 물리 모델을 사용하고, SciPy least_squares를 활용해 2D 추적 좌표와 모델 간 오차가 작아지도록 궤적 파라미터를 피팅합니다.
 
-### 1. Deep Dive into Speed Accuracy (Depth Noise Issue)
-- **Problem:** 2D 영상에서 객체 크기 기반으로 Depth를 추정할 때, 바운딩 박스의 미세한 떨림이 Z축 좌표의 심각한 노이즈로 증폭되는 현상 발생.
-- **Solution:** 최근 5프레임 반경의 크기 평균을 구하는 **Radius Smoothing** 기법과 **Kalman Filter**를 융합 파이프라인으로 구축하여 Z축 좌표의 튀는 현상을 성공적으로 제어하고 속도 측정의 신뢰도를 확보했습니다.
+- **SSE Progress Streaming**
+  - 영상 분석처럼 시간이 걸리는 작업의 진행률을 FastAPI StreamingResponse와 React ReadableStream 기반으로 클라이언트에 전달합니다.
 
-### 2. Goal Detection in the Wild (Robustness Issue)
-- **Problem:** 야외 조명 변화, 카메라 각도, 그물의 색상 등에 따라 단일 프레임에서의 골대 Segmentation이 실패하거나 끊어지는 문제 발생.
-- **Solution:** 영상 초반 프레임들의 Segmentation Mask를 **누적(Accumulate)**하고, OpenCV의 **모폴로지 연산(Morphological Operations)**을 적용해 끊어진 객체를 이어붙임으로써 환경 변화에 강건한 골대 영역 복원 알고리즘을 구현했습니다.
+- **Result Visualization**
+  - 추정된 궤적과 속도 정보를 오버레이 이미지 형태로 생성하고 프론트엔드에서 확인할 수 있도록 구성했습니다.
 
-## 📦 Installation & Setup (설치 및 실행)
+---
 
-이 프로젝트는 Python(Backend)과 Node.js(Frontend) 환경이 필요합니다.
+## 3. Architecture
 
-### 1. Clone the repository
-```bash
-git clone https://github.com/YOUR_USERNAME/soccer-shot-analyzer.git
-cd soccer-shot-analyzer
-```
+1. 사용자가 React 프론트엔드에서 슈팅 영상을 업로드합니다.
+2. FastAPI 백엔드는 업로드된 영상을 저장하고 분석 작업을 별도 worker 흐름으로 실행합니다.
+3. 분석 진행률은 SSE를 통해 클라이언트에 전달됩니다.
+4. 분석 엔진은 공 검출, tracking, scale estimation, 궤적 파라미터 피팅을 수행합니다.
+5. 최종 결과는 속도/궤적 추정값과 오버레이 이미지로 반환됩니다.
 
-### 2. Backend Setup
-```bash
-# 가상환경 생성 (권장)
-python -m venv venv
-source venv/bin/activate  # Mac/Linux
-venv\Scripts\activate     # Windows
+---
 
-# 의존성 설치
-pip install -r backend/requirements.txt
-```
+## 4. AI Agent Usage
 
-### 3. Frontend Setup
-```bash
-cd frontend
-npm install
-```
+이 프로젝트에서는 AI Agent를 요구사항 분해, 구현 초안 작성, 라이브러리 사용법 탐색, 오류 원인 후보 정리, README 문서화 보조에 활용했습니다.
 
-## ▶️ Usage (사용법)
+AI Agent가 보조한 부분은 다음과 같습니다.
 
-프로젝트 루트에서 제공되는 실행 스크립트를 사용하면 한 번에 실행할 수 있습니다.
+- FastAPI 기반 영상 업로드 API 구조 초안 작성
+- SSE progress streaming 구조 설계 보조
+- YOLO / OpenCV / SciPy 기반 분석 파이프라인 구현 아이디어 정리
+- React 업로드 화면, progress bar, result view 구성 보조
+- 오류 원인 후보 정리 및 문서화 보조
 
-```bash
-# 전체 실행 (Backend + Frontend)
-python run_app.py
-```
+직접 판단하고 검증한 부분은 다음과 같습니다.
 
-또는 개별 터미널에서 실행:
-1.  **Backend**: `uvicorn main:app --reload` (in `/backend`)
-2.  **Frontend**: `npm run dev` (in `/frontend`)
+- 단일 카메라 기반 분석의 한계를 고려해 결과를 “정밀 측정”이 아니라 “추정 및 시각화”로 포지셔닝
+- 골대 규격을 활용한 scale estimation 방식 적용
+- 실제 업로드, 진행률 표시, 결과 이미지 생성 흐름 확인
+- README와 포트폴리오 문구에서 과장 표현 제거
 
-웹 브라우저에서 `http://localhost:5173`으로 접속하여 영상을 업로드하세요!
+---
 
-## 🧩 Trouble Shooting & Engineering
+## 5. Limitations
 
-개발 과정에서 겪은 기술적 난제와 해결 방법들을 정리했습니다.
+- **Ground Truth 부재**
+  - 레이더 건, IMU, 멀티뷰 카메라 등 실제 계측 장비와 비교 검증한 값이 아니므로 속도와 궤적은 추정값입니다.
 
--   **Deep Dive into Speed Accuracy**: 
-    -   *Problem*: 2D 영상에서 공의 크기 변화(Depth)가 노이즈로 인해 심하게 튐.
-    -   *Solution*: 최근 5프레임 반경 평균(Radius Smoothing)과 칼만 필터(Kalman Filter) 융합으로 해결.
+- **Depth Ambiguity**
+  - 단일 카메라 2D 영상만 사용하므로 Z축 깊이 변화 추정에는 구조적 한계가 있습니다.
 
--   **Goal Detection in the Wild**:
-    -   *Problem*: 야외 환경이나 각도에 따라 골대 인식이 실패함.
-    -   *Solution*: 영상 초반 프레임의 마스크를 누적(Accumulate)하고 모폴로지 연산(Morphology)으로 복원하는 알고리즘 구현.
+- **환경 민감성**
+  - 카메라 흔들림, 프레임레이트, 조명, 모션 블러, 촬영 각도에 따라 공 검출과 궤적 추정 결과가 달라질 수 있습니다.
 
-## 📝 License
+- **Scale Estimation 한계**
+  - 골대 탐지 결과와 실제 촬영 각도에 따라 scale estimation 오차가 발생할 수 있습니다.
 
-This project is licensed under the MIT License.
+- **Prototype Scope**
+  - 본 프로젝트는 상용 스포츠 분석 시스템이 아니라, AI/CV 분석 파이프라인과 웹 서비스 흐름을 검증하기 위한 프로토타입입니다.
+
+---
+
+## 6. Portfolio Note
+
+이 프로젝트는 NHN AI 전환 백엔드 개발 지원에서 메인 포트폴리오가 아니라, **AI Agent 기반 빠른 프로토타이핑과 AI 분석 백엔드 흐름 구현 경험을 보여주는 보조 프로젝트**입니다.
+
+메인 프로젝트인 AI Text Moderation Backend가 FastAPI, PostgreSQL, Docker Compose, structured logging, CI, 성능 테스트, review workflow 중심의 AI Model Serving Backend라면, 이 프로젝트는 영상 기반 AI 분석 작업을 FastAPI 비동기 처리, SSE 진행률 스트리밍, React 결과 UI와 연결한 사례입니다.
+
+핵심 메시지는 다음과 같습니다.
+
+> AI 기능은 모델 추론만으로 완성되지 않으며, 사용자가 업로드하고 기다리고 결과를 확인하는 전체 서비스 흐름까지 함께 설계되어야 한다.
