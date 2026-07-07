@@ -41,6 +41,11 @@ soccer_videos/
 *.avi
 *.mov
 
+# 데모용 미디어 파일은 예외적으로 Git에 허용
+!assets/
+!assets/demo.mp4
+!assets/*.png
+
 # 로컬 카메라 보정 부산물
 backend/calibration.json
 calibration.json
@@ -89,3 +94,47 @@ deep_verify.py
 run_test_local.py
 analyze_shot_0ae905e.py
 backend/analyze_shot_v1_backup.py
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+*.env
+
+# Backend runtime files
+backend/uploads/
+backend/results/
+uploads/
+results/
+
+# Raw videos and generated videos
+*.mov
+*.avi
+*.mkv
+
+# Keep only curated demo video under assets
+!assets/demo.mp4
+
+# Model weights
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# Calibration / local config
+calibration.json
+config.json
+config.local.json
+
+# Logs
+*.log
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
