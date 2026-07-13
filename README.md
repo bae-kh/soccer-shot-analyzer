@@ -4,11 +4,6 @@
 
 이 프로젝트는 정밀 스포츠 계측 시스템이 아니라, **AI Agent를 활용해 CV 분석 파이프라인과 FastAPI 기반 AI 서비스 흐름을 빠르게 프로토타이핑한 보조 포트폴리오**입니다.
 
-
-
-https://github.com/user-attachments/assets/1491df93-ec3d-40b1-942b-b77e2e096dba
-
-
 ---
 
 ## 1. Project Summary
@@ -27,7 +22,9 @@ https://github.com/user-attachments/assets/1491df93-ec3d-40b1-942b-b77e2e096dba
 
 ### Demo Video
 
-[![Demo Video](assets/result_screen.png)](assets/demo.mp4)
+
+https://github.com/user-attachments/assets/626872b0-3773-477d-a31d-f6dd5e4a7fcd
+
 
 ### Screenshots
 
