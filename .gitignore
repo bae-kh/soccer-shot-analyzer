@@ -138,3 +138,6 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# 백엔드 API 검증 코드는 일회성 스크립트가 아니므로 예외로 둔다
+!backend/test_api.py

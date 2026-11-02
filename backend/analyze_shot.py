@@ -113,6 +113,10 @@ class HybridTracker:
              self.is_tracking = False
              return None
 
+# 분석 신뢰도 임계값. 평가용 영상의 탐지율 분포를 확인한 뒤 보정할 잠정값이다.
+CONFIDENCE_THRESHOLD = 0.6
+
+
 class ProShootingAnalyzer:
     def __init__(self, callback=None):
         self.callback = callback
@@ -143,13 +147,20 @@ class ProShootingAnalyzer:
                 ret, frame = cap.read()
                 if not ret: break
                 results = goal_model(frame, imgsz=640, verbose=False, conf=0.04)
+                # 분할 모델과 박스 모델 양쪽 출력에서 골대 폭을 뽑는다
+                goal_widths = []
                 if results[0].masks:
                     for seg in results[0].masks.xy:
                         if len(seg) > 5:
-                            rect = cv2.boundingRect(np.int32(seg))
-                            gw = rect[2]
-                            if best_w < gw < width * 0.95:
-                                best_w = gw
+                            goal_widths.append(cv2.boundingRect(np.int32(seg))[2])
+                elif results[0].boxes is not None:
+                    for box in results[0].boxes:
+                        x1, _, x2, _ = box.xyxy[0].cpu().numpy()
+                        goal_widths.append(float(x2 - x1))
+
+                for gw in goal_widths:
+                    if best_w < gw < width * 0.95:
+                        best_w = gw
             if best_w > 0:
                 # [V2.5] Absolute Calibration (Assume 16 meters to goal, Goal width 7.32m)
                 F_px = (16.0 * best_w) / 7.32
@@ -176,7 +187,46 @@ class ProShootingAnalyzer:
             self.F_px = (width / 2.0) / math.tan(math.radians(60) / 2.0)
             print(f"[V2.5] Fallback Initial Focal Length: {self.F_px:.1f}")
 
+    def _to_original_coords(self, u_list, v_list):
+        # 탐지는 왜곡 보정된 프레임에서 이뤄지지만 프론트엔드는 원본 영상 위에 궤적을 그린다.
+        # 보정 좌표를 다시 왜곡시켜 원본 영상 좌표계로 되돌린다.
+        if self.cam_mtx is None or not u_list:
+            return list(u_list), list(v_list)
+
+        fx, fy = self.cam_mtx[0, 0], self.cam_mtx[1, 1]
+        cx, cy = self.cam_mtx[0, 2], self.cam_mtx[1, 2]
+        normalized = np.array(
+            [[(u - cx) / fx, (v - cy) / fy, 1.0] for u, v in zip(u_list, v_list)],
+            dtype=np.float64,
+        )
+        zero = np.zeros(3)
+        projected, _ = cv2.projectPoints(normalized, zero, zero, self.cam_mtx, self.cam_dist)
+        projected = projected.reshape(-1, 2)
+        return projected[:, 0].tolist(), projected[:, 1].tolist()
+
+    def _build_result(self, out_path, started_at, status, failure_reason=None,
+                      score=0, speed_kmh=0.0, trajectory=None, confidence=0.0, comment="",
+                      fps=0.0, frame_size=None):
+        result = {
+            "status": status,
+            "score": score,
+            "speed_kmh": round(float(speed_kmh), 1),
+            "goal": False,  # 골인 판정 로직 미구현
+            "trajectory": trajectory or [],
+            # 프론트엔드가 재생 시간과 궤적을 맞추는 데 쓴다
+            "fps": round(float(fps), 2),
+            "frame_size": frame_size or {"width": 0, "height": 0},
+            "confidence": round(float(confidence), 2),
+            "processing_time_sec": round(time.time() - started_at, 1),
+            "trajectory_image": os.path.basename(out_path),
+            "comment": comment,
+        }
+        if status == "ANALYSIS_FAILED":
+            result["failure_reason"] = failure_reason
+        return result
+
     def run(self, video_path, output_path):
+        started_at = time.time()
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -223,7 +273,10 @@ class ProShootingAnalyzer:
             print(f"[V2.5] Locked static ball at ({initial_ball_box[0]:.0f}, {initial_ball_box[1]:.0f})")
         else:
             print("[V2.5] No static ball found. Returning error.")
-            return {"score": 0, "speed": 0, "comment": "공을 찾지 못했습니다.", "trajectory_image": os.path.basename(out_path)}
+            return self._build_result(out_path, started_at, "ANALYSIS_FAILED",
+                                      failure_reason="BALL_NOT_DETECTED",
+                                      comment="공을 찾지 못했습니다.",
+                                      fps=fps, frame_size={"width": width, "height": height})
             
         # 2. Main Tracking Loop
         print("[V2.5] Phase 2: Main Tracking")
@@ -231,6 +284,11 @@ class ProShootingAnalyzer:
         
         flight_active = False
         tracked_t, tracked_u, tracked_v = [], [], []
+        # 프론트엔드가 재생 시간과 궤적을 맞추도록 0부터 시작하는 프레임 번호를 함께 기록한다
+        tracked_frame_no = []
+        # 신뢰도 산출용. 추적된 프레임 중 YOLO 탐지에 성공한 비율을 confidence로 쓴다
+        tracked_frames = 0
+        yolo_hit_frames = 0
         r0 = min(initial_ball_box[2], initial_ball_box[3]) / 2.0
         
         first_track_frame = None
@@ -294,12 +352,16 @@ class ProShootingAnalyzer:
                     tracked_t.append(t)
                     tracked_u.append(initial_ball_box[0])
                     tracked_v.append(initial_ball_box[1])
+                    tracked_frame_no.append(frame_idx - 1)
                     
                     # 첫 트래커 초기화
                     tracker.init(frame, best_yolo[0], best_yolo[1], best_yolo[2], best_yolo[3])
-                    tracked_t.append(t + 0.001) 
+                    tracked_t.append(t + 0.001)
                     tracked_u.append(best_yolo[0])
                     tracked_v.append(best_yolo[1])
+                    tracked_frame_no.append(frame_idx - 1)
+                    tracked_frames += 1
+                    yolo_hit_frames += 1
                     print(f"[V2.5] ⚽ KICK! Initialized at {best_yolo[0]:.0f}, {best_yolo[1]:.0f}")
             else:
                 # Active tracking
@@ -308,6 +370,10 @@ class ProShootingAnalyzer:
                     tracked_t.append(t)
                     tracked_u.append(track_res[0])
                     tracked_v.append(track_res[1])
+                    tracked_frame_no.append(frame_idx - 1)
+                    tracked_frames += 1
+                    if best_yolo is not None:
+                        yolo_hit_frames += 1
                 else:
                     # Tracking lost (e.g. out of frame or into net)
                     print(f"[V2.5] Tracking ended at frame {frame_idx}")
@@ -317,9 +383,20 @@ class ProShootingAnalyzer:
         
         # 3. Trajectory Fitting
         print(f"[V2.5] Phase 3: Trajectory Optimization with {len(tracked_t)} points")
+        confidence = yolo_hit_frames / tracked_frames if tracked_frames > 0 else 0.0
+        # 궤적 피팅에는 보정 좌표를 그대로 쓰고(핀홀 모델 전제), 출력용만 원본 영상 좌표로 되돌린다
+        out_u, out_v = self._to_original_coords(tracked_u, tracked_v)
+        trajectory = [{"x": round(float(u), 1), "y": round(float(v), 1), "frame": int(f)}
+                      for u, v, f in zip(out_u, out_v, tracked_frame_no)]
+        frame_size = {"width": width, "height": height}
+
         if len(tracked_t) < 5:
-            return {"score": 0, "speed": 0, "comment": "오류: 추적된 공 궤적이 너무 짧습니다.", "trajectory_image": os.path.basename(out_path)}
-            
+            return self._build_result(out_path, started_at, "ANALYSIS_FAILED",
+                                      failure_reason="TRACK_TOO_SHORT",
+                                      trajectory=trajectory, confidence=confidence,
+                                      comment="오류: 추적된 공 궤적이 너무 짧습니다.",
+                                      fps=fps, frame_size=frame_size)
+
         t_arr = np.array(tracked_t) - tracked_t[0]
         u_obs = np.array(tracked_u)
         v_obs = np.array(tracked_v)
@@ -327,7 +404,11 @@ class ProShootingAnalyzer:
         best_params = optimizer.optimize(t_arr, u_obs, v_obs, r0)
         
         if best_params is None:
-            return {"score": 0, "speed": 0, "comment": "오류: 궤적 피팅에 실패했습니다.", "trajectory_image": os.path.basename(out_path)}
+            return self._build_result(out_path, started_at, "ANALYSIS_FAILED",
+                                      failure_reason="FIT_FAILED",
+                                      trajectory=trajectory, confidence=confidence,
+                                      comment="오류: 궤적 피팅에 실패했습니다.",
+                                      fps=fps, frame_size=frame_size)
             
         X0, Y0, Z0, Vx, Vy, Vz, Ax = best_params
         
@@ -406,8 +487,19 @@ class ProShootingAnalyzer:
         else: comment = "더 강하게 찰 수 있습니다! 화이팅! 💨"
         
         score = min(100, int(speed_kmh / 1.3))
-        
-        return {"score": score, "speed": round(speed_kmh, 1), "comment": comment, "trajectory_image": os.path.basename(out_path)}
+
+        if confidence < CONFIDENCE_THRESHOLD:
+            return self._build_result(out_path, started_at, "ANALYSIS_FAILED",
+                                      failure_reason="LOW_CONFIDENCE",
+                                      trajectory=trajectory, confidence=confidence,
+                                      comment="탐지가 불안정하여 분석 결과를 신뢰하기 어렵습니다.",
+                                      fps=fps, frame_size=frame_size)
+
+        return self._build_result(out_path, started_at, "VALID",
+                                  score=score, speed_kmh=speed_kmh,
+                                  trajectory=trajectory, confidence=confidence,
+                                  comment=comment,
+                                  fps=fps, frame_size=frame_size)
 
 def process_video_with_progress(video_path, output_path, callback=None):
     print(f"[MAIN] Processing started for {video_path}")
