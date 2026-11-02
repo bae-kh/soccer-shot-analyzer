@@ -1,0 +1,6 @@
+# API 서버만 띄울 때 필요한 최소 의존성.
+# 명세 확인, 예시 작업 조회, 진행률 구독까지 모두 동작한다.
+# 영상을 올려 분석하려면 requirements.txt로 분석 라이브러리까지 설치해야 한다.
+fastapi
+uvicorn[standard]
+python-multipart

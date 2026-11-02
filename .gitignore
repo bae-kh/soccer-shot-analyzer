@@ -141,3 +141,7 @@ Thumbs.db
 
 # 백엔드 API 검증 코드는 일회성 스크립트가 아니므로 예외로 둔다
 !backend/test_api.py
+
+# 의존성 목록은 로그 파일이 아니므로 위의 *.txt 규칙에서 제외한다
+!**/requirements.txt
+!**/requirements-api.txt
