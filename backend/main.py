@@ -12,8 +12,10 @@ import uuid
 import asyncio
 import json
 import logging
-import cv2
-from analyze_shot import process_video_with_progress
+
+# opencv와 ultralytics 같은 분석 라이브러리는 영상을 실제로 처리할 때만 필요하다.
+# 명세 확인과 예시 작업 조회에는 쓰이지 않으므로, 설치되지 않은 환경에서도
+# 서버가 뜨도록 모듈 최상단이 아니라 사용하는 자리에서 불러온다.
 
 logger = logging.getLogger("shot_analyzer")
 if not logger.handlers:
@@ -196,8 +198,28 @@ def save_upload(file: UploadFile, max_bytes: Optional[int] = None) -> Optional[s
     return path
 
 
+def analysis_available() -> bool:
+    # 분석 라이브러리 설치 여부. 없는 환경에서는 영상을 처리하는 기능만 쓸 수 없다
+    try:
+        import cv2  # noqa: F401
+        import analyze_shot  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def analysis_unavailable_response() -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={"error_code": "ANALYSIS_UNAVAILABLE",
+                 "message": "분석 기능을 사용할 수 없는 환경입니다"},
+    )
+
+
 def check_video_constraints(path: str, min_duration_sec: float = MIN_DURATION_SEC):
     # 조건을 만족하면 None, 아니면 (상태 코드, 오류 코드, 메시지)를 돌려준다
+    import cv2
+
     cap = cv2.VideoCapture(path)
     try:
         if not cap.isOpened():
@@ -253,6 +275,11 @@ async def create_analysis(file: Optional[UploadFile] = File(None)):
             content={"error_code": "UNSUPPORTED_MEDIA_TYPE", "message": "지원하지 않는 형식의 파일입니다"},
         )
 
+    # 처리할 수 없는 요청이면 영상을 디스크에 쓰기 전에 돌려보낸다
+    if not analysis_available():
+        logger.warning("분석 요청 거절: 분석 라이브러리 미설치 → 503 ANALYSIS_UNAVAILABLE")
+        return analysis_unavailable_response()
+
     logger.info("분석 요청 수신: %s", file.filename)
     file_path = save_upload(file, MAX_UPLOAD_BYTES)
     if file_path is None:
@@ -288,6 +315,8 @@ async def create_analysis(file: Optional[UploadFile] = File(None)):
         jobs[analysis_id]["progress"] = progress
 
     def run_analysis():
+        from analyze_shot import process_video_with_progress
+
         started = time.time()
         try:
             result = process_video_with_progress(file_path, output_image_path, on_progress)
@@ -477,6 +506,10 @@ async def create_calibration(file: Optional[UploadFile] = File(None)):
             status_code=415,
             content={"error_code": "UNSUPPORTED_MEDIA_TYPE", "message": "지원하지 않는 형식의 파일입니다"},
         )
+
+    if not analysis_available():
+        logger.warning("보정 요청 거절: 분석 라이브러리 미설치 → 503 ANALYSIS_UNAVAILABLE")
+        return analysis_unavailable_response()
 
     logger.info("보정 요청 수신: %s", file.filename)
     file_path = save_upload(file, MAX_UPLOAD_BYTES)

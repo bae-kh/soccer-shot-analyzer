@@ -1,0 +1,20 @@
+# Render 배포 설정.
+#
+# 분석 라이브러리 없이 API 서버만 올린다. 명세 확인과 예시 작업 조회,
+# 진행률 구독까지 동작하고 영상 분석 요청은 503으로 응답한다.
+# 분석 모델이 준비되면 requirements.txt로 바꾸고 다시 배포한다.
+services:
+  - type: web
+    name: soccer-shot-api
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install -r requirements-api.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
+      # 연동용 예시 작업을 메모리에 적재한다
+      - key: SAMPLE_DATA
+        value: "1"

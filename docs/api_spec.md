@@ -130,6 +130,7 @@ job을 생성하기 전에 아래 조건을 검사하고, 위반 시 202 대신 
 | 415       | 허용되지 않은 확장자/MIME 타입 | { "error_code": "UNSUPPORTED_MEDIA_TYPE", "message": "지원하지 않는 형식의 파일입니다" } |
 | 415       | 해상도 미달 (짧은 변 480px)    | { "error_code": "RESOLUTION_TOO_LOW", "message": "영상 해상도가 너무 낮습니다" }        |
 | 415       | 영상 정보를 읽을 수 없음       | { "error_code": "UNREADABLE_VIDEO", "message": "영상을 읽을 수 없습니다" }              |
+| 503       | 분석 라이브러리가 없는 환경    | { "error_code": "ANALYSIS_UNAVAILABLE", "message": "분석 기능을 사용할 수 없는 환경입니다" } |
 
 **검증 기준값 (6주차 확정)**
 
