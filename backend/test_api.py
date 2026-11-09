@@ -259,22 +259,39 @@ def check_result_schema():
     print("=" * 62)
 
     load_main({})
-    from analyze_shot import ProShootingAnalyzer
+    # 입력은 analyze_shot의 반환문에서 확인한 키를 그대로 사용한다.
+    # 모델을 받으면 실제 분석 결과를 받아 이 입력을 대체한다.
+    from result_adapter import to_api_result
 
-    traj = [{"x": 150.0, "y": 540.0, "frame": 0},
-            {"x": 240.0, "y": 440.0, "frame": 3},
-            {"x": 350.0, "y": 355.0, "frame": 6}]
+    def records(count, observed=None):
+        out = []
+        for i in range(count):
+            seen = observed is None or i < observed
+            out.append({"frame_number": i * 3, "x": 150.0 + i * 90 if seen else None,
+                        "y": 540.0 - i * 85 if seen else None,
+                        "source": "yolo" if seen else "kalman_prediction",
+                        "observed": seen})
+        return out
 
-    valid = ProShootingAnalyzer._build_result(
-        None, "/uploads/20261027_shot_result.jpg", time.time() - 3.2, "VALID",
-        score=78, speed_kmh=93.74, trajectory=traj, confidence=0.823,
-        comment="아마추어를 뛰어넘은 멋진 슈팅!", fps=29.97,
-        frame_size={"width": 1920, "height": 1080})
+    valid = to_api_result({
+        "measurement_status": "ESTIMATED", "failure_reason": None, "speed": 93.74,
+        "score_evaluation": {"value": 78.0, "status": "PROVISIONAL"},
+        "physical_goal": {"status": "ESTIMATED_GOAL"},
+        "trajectory": records(3), "tracking_summary": {"observed_points": 3},
+        "video_metadata": {"width": 1920, "height": 1080, "fps": 29.97},
+        "trajectory_image": "20261027_shot_result.jpg",
+        "comment": "아마추어를 뛰어넘은 멋진 슈팅!",
+    }, time.time() - 3.2)
 
-    failed = ProShootingAnalyzer._build_result(
-        None, "/uploads/20261027_x_result.jpg", time.time() - 1.1, "ANALYSIS_FAILED",
-        failure_reason="BALL_NOT_DETECTED", comment="공을 찾지 못했습니다.",
-        fps=30.0, frame_size={"width": 1080, "height": 1920})
+    failed = to_api_result({
+        "measurement_status": "UNAVAILABLE", "failure_reason": "BALL_NOT_FOUND", "speed": None,
+        "score_evaluation": {"value": None, "status": "NOT_EVALUATED"},
+        "physical_goal": {"status": "UNDETERMINED"},
+        "trajectory": [], "tracking_summary": {"observed_points": 0},
+        "video_metadata": {"width": 1080, "height": 1920, "fps": 30.0},
+        "trajectory_image": "20261027_x_result.jpg",
+        "comment": "공을 찾지 못했습니다.",
+    }, time.time() - 1.1)
 
     print("  [정상 분석]")
     print(json.dumps(valid, ensure_ascii=False, indent=2))

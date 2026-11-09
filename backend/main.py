@@ -317,12 +317,15 @@ async def create_analysis(file: Optional[UploadFile] = File(None)):
 
     def run_analysis():
         from analyze_shot import process_video_with_progress
+        from result_adapter import to_api_result
 
         started = time.time()
         try:
-            result = process_video_with_progress(file_path, output_image_path, on_progress)
+            raw = process_video_with_progress(file_path, output_image_path, on_progress)
+            # 분석 결과를 프론트엔드가 쓰는 응답 형식으로 바꾼다
+            result = to_api_result(raw, started)
             jobs[analysis_id]["result"] = result
-            jobs[analysis_id]["status"] = result.get("status", "VALID")
+            jobs[analysis_id]["status"] = result["status"]
             jobs[analysis_id]["progress"] = 100
             logger.info("[%s] 분석 완료 status=%s %s %.1f초", short_id,
                         jobs[analysis_id]["status"],
