@@ -8,6 +8,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [showCalibration, setShowCalibration] = useState(false)
+  const [profileRevision, setProfileRevision] = useState(0)
 
   const handleAnalysisComplete = (data) => {
     setResult(data)
@@ -51,6 +52,8 @@ function App() {
               setProgress(0)
             }}
             onAnalysisComplete={handleAnalysisComplete}
+            onAnalysisError={() => setLoading(false)}
+            profileRevision={profileRevision}
             onProgress={setProgress}
             loading={loading}
             progress={progress}
@@ -63,6 +66,7 @@ function App() {
       <CalibrationModal
         isOpen={showCalibration}
         onClose={() => setShowCalibration(false)}
+        onCalibrationComplete={() => setProfileRevision(value => value + 1)}
       />
     </div>
   )

@@ -1,8 +1,15 @@
 import { useState, useRef } from 'react'
+import CaptureSettings from './CaptureSettings'
+import { readJsonEvents } from '../lib/sse'
+import { withResultImages } from '../lib/goalResult'
+import { measurementConfigProblem } from '../lib/measurementConfig'
 
-export default function Upload({ onUploadStart, onAnalysisComplete, onProgress, loading, progress }) {
+export default function Upload({ onUploadStart, onAnalysisComplete, onAnalysisError, onProgress, loading, progress, profileRevision }) {
     const [dragActive, setDragActive] = useState(false)
     const inputRef = useRef(null)
+    const [error, setError] = useState('')
+    const [options, setOptions] = useState({ analysis_mode: 'automatic', timing_mode: 'normal', slowdown_factor: null, capture_fps: null,
+        one_frame_per_capture: false, intrinsics_profile_id: null, same_camera_settings: false, uncropped: false })
 
     const handleDrag = (e) => {
         e.preventDefault()
@@ -31,11 +38,16 @@ export default function Upload({ onUploadStart, onAnalysisComplete, onProgress, 
     }
 
     const handleFile = async (file) => {
+        if (loading) return
+        const problem = measurementConfigProblem(options)
+        if (problem) { setError(problem); return }
+        setError('')
         onUploadStart() // 로딩 시작 및 progress 0
 
         // One-Step Analyze Stream
         const formData = new FormData()
         formData.append("file", file)
+        formData.append('capture_options', JSON.stringify(options))
 
         try {
             const response = await fetch("http://localhost:8000/analyze", {
@@ -43,45 +55,24 @@ export default function Upload({ onUploadStart, onAnalysisComplete, onProgress, 
                 body: formData,
             })
 
-            if (!response.body) throw new Error("No response body")
-
-            const reader = response.body.getReader()
-            const decoder = new TextDecoder()
-            let buffer = ""
-
-            while (true) {
-                const { done, value } = await reader.read()
-                if (done) break
-
-                buffer += decoder.decode(value, { stream: true })
-                const lines = buffer.split("\n\n")
-                buffer = lines.pop() // Last incomplete line
-
-                for (const line of lines) {
-                    if (line.startsWith("data: ")) {
-                        try {
-                            const data = JSON.parse(line.slice(6))
-                            if (data.type === "progress") {
-                                onProgress(data.value)
-                            } else if (data.type === "result") {
-                                const resultData = data.data
-                                resultData.image_url = `http://localhost:8000/results/${resultData.trajectory_image}`
-                                onAnalysisComplete(resultData)
-                            } else if (data.type === "error") {
-                                alert("Error: " + data.message)
-                                window.location.reload()
-                            }
-                        } catch (e) {
-                            console.error("JSON Parse Error", e)
-                        }
-                    }
-                }
+            if (!response.ok) {
+                const detail = await response.json()
+                throw new Error(typeof detail.detail === 'string' ? detail.detail : '촬영 조건 입력을 확인해 주세요.')
             }
+            let receivedFinal = false
+            for await (const data of readJsonEvents(response.body)) {
+                if (data.type === 'progress') onProgress(data.value)
+                else if (data.type === 'result') {
+                    onAnalysisComplete(withResultImages(data.data))
+                    receivedFinal = true
+                } else if (data.type === 'error') throw new Error(data.message)
+            }
+            if (!receivedFinal) throw new Error('분석 결과를 받지 못했습니다.')
 
         } catch (error) {
             console.error(error)
-            alert("서버 연결 오류가 발생했습니다.")
-            window.location.reload()
+            setError(error.message || '서버 연결 오류가 발생했습니다.')
+            onAnalysisError()
         }
 
     }
@@ -92,6 +83,8 @@ export default function Upload({ onUploadStart, onAnalysisComplete, onProgress, 
 
     return (
         <div className="w-full">
+            {!loading && <CaptureSettings options={options} onChange={setOptions} profileRevision={profileRevision} />}
+            {error && <p role="alert" className="text-red-300 mb-3">{error}</p>}
             <div
                 className={`flex flex-col items-center justify-center p-10 border-2 border-dashed rounded-xl transition-all duration-300 ${dragActive ? "border-emerald-400 bg-emerald-900/20 shadow-[0_0_20px_rgba(52,211,153,0.2)]" : "border-slate-600 bg-slate-900/50 hover:bg-slate-800"
                     }`}
@@ -106,6 +99,7 @@ export default function Upload({ onUploadStart, onAnalysisComplete, onProgress, 
                     className="hidden"
                     accept="video/*"
                     onChange={handleChange}
+                    disabled={loading}
                 />
 
                 {loading ? (
@@ -148,7 +142,7 @@ export default function Upload({ onUploadStart, onAnalysisComplete, onProgress, 
                             <strong className="text-emerald-300 font-semibold drop-shadow-sm">화각 확보:</strong> 영상 안에서 골대 전체 윤곽이 멀리서 한눈에 들어오게 찍어주세요.
                         </li>
                         <li>
-                            <strong className="text-emerald-300 font-semibold drop-shadow-sm">스마트폰 자동 인식:</strong> 분석기가 영상을 올리기만 해도 <span className="text-cyan-300">내부 렌즈 데이터를 자동으로 추출(Auto-Calib)</span>하여 궤적 보정에 활용합니다.
+                            <strong className="text-emerald-300 font-semibold drop-shadow-sm">기본 분석:</strong> 정상 속도·줌 없는 영상을 기준으로 자동 추정합니다. 슬로모션 영상이나 다른 촬영 설정은 선택 설정에서 변경할 수 있습니다.
                         </li>
                     </ul>
                 </div>
