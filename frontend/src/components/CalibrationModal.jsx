@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { readJsonEvents } from '../lib/sse';
 
-const CalibrationModal = ({ isOpen, onClose }) => {
+const CalibrationModal = ({ isOpen, onClose, onCalibrationComplete }) => {
     const [file, setFile] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [progress, setProgress] = useState(0);
     const [result, setResult] = useState(null);
     const [error, setError] = useState(null);
+    const [label, setLabel] = useState('');
 
     if (!isOpen) return null;
 
@@ -19,7 +21,7 @@ const CalibrationModal = ({ isOpen, onClose }) => {
     };
 
     const startCalibration = async () => {
-        if (!file) return;
+        if (!file || !label.trim()) return;
 
         setIsProcessing(true);
         setError(null);
@@ -28,6 +30,7 @@ const CalibrationModal = ({ isOpen, onClose }) => {
 
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('profile_label', label.trim());
 
         try {
             // 1. Upload the file
@@ -40,41 +43,23 @@ const CalibrationModal = ({ isOpen, onClose }) => {
                 throw new Error('Upload failed');
             }
 
-            // 2. We can't directly use EventSource with POST body, so the backend was designed
-            // to return an SSE stream directly from the POST request in main.py.
-            // We will read the stream manually using fetch iterators.
-            const reader = uploadRes.body.getReader();
-            const decoder = new TextDecoder("utf-8");
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                const chunk = decoder.decode(value, { stream: true });
-                const lines = chunk.split('\n');
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        try {
-                            const data = JSON.parse(line.substring(6));
-
-                            if (data.type === 'progress') {
-                                setProgress(data.value);
-                            } else if (data.type === 'result') {
-                                setResult(data.data);
-                                setIsProcessing(false);
-                            } else if (data.type === 'error') {
-                                setError(data.message);
-                                setIsProcessing(false);
-                            }
-                        } catch (err) {
-                            console.error("Parse error:", err);
-                        }
-                    }
+            let receivedFinal = false;
+            for await (const data of readJsonEvents(uploadRes.body)) {
+                if (data.type === 'progress') {
+                    setProgress(data.value);
+                } else if (data.type === 'result') {
+                    setResult(data.data);
+                    onCalibrationComplete();
+                    receivedFinal = true;
+                } else if (data.type === 'error') {
+                    setError(data.message);
+                    receivedFinal = true;
                 }
             }
+            if (!receivedFinal) throw new Error('카메라 보정 결과를 받지 못했습니다.');
         } catch (err) {
             setError(err.message || "An error occurred during calibration.");
+        } finally {
             setIsProcessing(false);
         }
     };
@@ -89,8 +74,12 @@ const CalibrationModal = ({ isOpen, onClose }) => {
 
                 <p className="text-sm text-gray-600 mb-6">
                     더 정확한 속도/궤적 측정을 위해 렌즈 왜곡을 교정합니다.<br />
-                    <strong>9x6 체스보드</strong>를 프린트하여 10초 내외로 천천히 여러 각도에서 찍은 영상을 업로드해주세요.
+                    <strong>내부 교차점 9×6개인 체커보드(칸 수 10×7)</strong>를 프린트하여 천천히 여러 각도에서 찍은 영상을 업로드해주세요. 슈팅 촬영과 같은 카메라·렌즈·줌 설정을 사용하세요.
                 </p>
+                <label className="block text-sm text-gray-700 mb-4">카메라 · 렌즈 · 줌 설정 이름
+                    <input className="w-full border rounded-lg p-2 mt-1 text-gray-800" maxLength={120} value={label}
+                        onChange={e => setLabel(e.target.value)} disabled={isProcessing} placeholder="예: 휴대폰 후면 1× / 1080p" />
+                </label>
 
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition-colors mb-4">
                     <input
@@ -127,7 +116,7 @@ const CalibrationModal = ({ isOpen, onClose }) => {
                 {result && result.status === 'success' && (
                     <div className="bg-green-50 text-green-700 p-3 rounded-lg text-sm mb-4">
                         ✅ <strong>캘리브레이션 완료!</strong><br />
-                        렌즈 고유의 왜곡 계수와 초점 거리가 시스템에 적용되었습니다. 이제 메인 화면에서 슈팅 영상을 분석해보세요.
+                        ‘{result.profile_label}’ 보정을 저장했습니다. 메인 화면에서 해당 설정을 선택하세요. 렌즈·줌·촬영 모드가 바뀌면 별도로 보정하세요.
                     </div>
                 )}
 
@@ -141,9 +130,9 @@ const CalibrationModal = ({ isOpen, onClose }) => {
                     </button>
                     <button
                         onClick={startCalibration}
-                        className={`px-4 py-2 rounded-lg font-medium text-white transition-colors ${!file || isProcessing ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-md'
+                        className={`px-4 py-2 rounded-lg font-medium text-white transition-colors ${!file || !label.trim() || isProcessing ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 shadow-md'
                             }`}
-                        disabled={!file || isProcessing}
+                        disabled={!file || !label.trim() || isProcessing}
                     >
                         교정 시작
                     </button>

@@ -6,9 +6,11 @@ import json
 
 # 보정 계산에 필요한 최소 체스보드 검출 프레임 수
 MIN_VALID_FRAMES = 5
+# 재투영 오차가 이 값을 넘으면 보정값을 믿을 수 없다고 본다
+MAX_RMS_ERROR = 2.0
 
 
-def calibrate_camera(video_path, output_json="calibration.json", chessboard_size=(9, 6), square_size_m=0.025, max_frames=50):
+def calibrate_camera(video_path, output_json=None, chessboard_size=(9, 6), square_size_m=0.025, max_frames=50):
     """
     Calibrate a camera using a video of a chessboard sequence.
     
@@ -20,6 +22,8 @@ def calibrate_camera(video_path, output_json="calibration.json", chessboard_size
         max_frames: Max number of frames to sample from the video.
     """
     print(f"[INFO] Starting Camera Calibration on: {video_path}")
+    if output_json is None:
+        output_json = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'calibration.json')
     
     # termination criteria for corner sub-pixel refinement
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
@@ -128,7 +132,7 @@ def calibrate_camera(video_path, output_json="calibration.json", chessboard_size
     try:
         ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, img_size, None, None)
         
-        if ret:
+        if np.isfinite(ret) and 0 <= ret <= 2.0 and np.isfinite(mtx).all() and mtx[0, 0] > 0 and mtx[1, 1] > 0:
             print("\n=== Calibration Successful ===")
             print(f"RMS Re-projection Error: {ret:.4f}")
             print("\nCamera Matrix (K):\n", mtx)
@@ -136,15 +140,19 @@ def calibrate_camera(video_path, output_json="calibration.json", chessboard_size
             
             # Save to JSON
             calib_data = {
+                "schema_version": 1,
                 "camera_matrix": mtx.tolist(),
                 "dist_coeffs": dist.tolist(),
                 "rms_error": ret,
                 "img_width": img_size[0],
-                "img_height": img_size[1]
+                "img_height": img_size[1],
+                "resolution": list(img_size),
+                "valid_views": valid_captures,
+                "calibration_scope": "intrinsics_only_same_camera_lens_zoom"
             }
 
             try:
-                 with open(output_json, 'w') as f:
+                 with open(output_json, 'w', encoding='utf-8') as f:
                      json.dump(calib_data, f, indent=4)
                  print(f"\n[SUCCESS] Calibration saved to {output_json}")
             except Exception as e:
@@ -153,8 +161,10 @@ def calibrate_camera(video_path, output_json="calibration.json", chessboard_size
 
             return {"ok": True, "used_frames": valid_captures, **calib_data}
         else:
-            print("[ERROR] Internal Calibration Algorithm Failed.")
+            # 계산 자체가 실패한 경우와 오차가 커서 믿을 수 없는 경우를 함께 처리한다
+            print("[ERROR] Calibration is invalid or RMS error exceeds 2 pixels.")
             return {"ok": False, "failure_reason": "CALIBRATION_FAILED", "used_frames": valid_captures}
+
 
     except Exception as e:
         print(f"[ERROR] OpenCV calibrateCamera crashed: {e}")
@@ -163,7 +173,7 @@ def calibrate_camera(video_path, output_json="calibration.json", chessboard_size
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Calibrate Camera using Chessboard Video")
     parser.add_argument("video", type=str, help="Path to the chessboard video.")
-    parser.add_argument("--out", type=str, default="backend/calibration.json", help="Output JSON path")
+    parser.add_argument("--out", type=str, default=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'calibration.json'), help="Output JSON path")
     parser.add_argument("--corners_x", type=int, default=9, help="Number of internal corners in X (width)")
     parser.add_argument("--corners_y", type=int, default=6, help="Number of internal corners in Y (height)")
     parser.add_argument("--square_m", type=float, default=0.025, help="Square side length in meters (e.g., 0.025 for 2.5cm)")

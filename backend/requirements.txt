@@ -1,7 +1,4 @@
-fastapi
-uvicorn[standard]
-python-multipart
-opencv-python
-numpy
-scipy
-ultralytics
+-r requirements-ai.txt
+fastapi==0.128.8
+uvicorn==0.39.0
+python-multipart==0.0.20
