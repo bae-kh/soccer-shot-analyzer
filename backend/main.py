@@ -71,7 +71,8 @@ calibrations = {}
 TERMINAL_STATUSES = {"VALID", "ANALYSIS_FAILED", "ERROR"}
 
 # 연동용 예시 작업. 기본은 꺼져 있고 SAMPLE_DATA=1 일 때만 채운다
-if os.getenv("SAMPLE_DATA") == "1":
+SAMPLE_DATA_ENABLED = os.getenv("SAMPLE_DATA") == "1"
+if SAMPLE_DATA_ENABLED:
     from sample_data import seed_samples
     _job_ids, _calib_ids = seed_samples(jobs, calibrations)
     logger.info("예시 작업 활성화 — 분석 %s / 보정 %s", _job_ids, _calib_ids)
@@ -333,6 +334,83 @@ async def create_analysis(file: Optional[UploadFile] = File(None)):
 
     # 구독 여부와 무관하게 분석이 끝까지 진행되도록 요청과 분리해 실행한다
     asyncio.get_running_loop().run_in_executor(None, run_analysis)
+
+    return JSONResponse(status_code=202, content={"id": analysis_id})
+
+
+@app.post(
+    "/analyses/demo",
+    status_code=202,
+    tags=["분석"],
+    summary="진행률 시연용 분석 작업 생성 (연동용)",
+    description=(
+        "영상 없이 진행률이 올라가는 분석 작업을 만든다. 분석 모델이 준비되기 전까지 "
+        "프론트엔드가 진행률 화면을 확인할 수 있도록 둔 임시 엔드포인트다.\n\n"
+        "응답은 업로드와 같은 형태이므로, 업로드 호출만 이 주소로 바꾸면 이후 흐름은 그대로 동작한다. "
+        "진행률은 연동 가이드에 적은 분석 구간과 같은 순서로 올라간다.\n\n"
+        "- outcome : 끝났을 때 받을 결과. valid, no-ball, low-confidence, track-short, error 중 하나\n"
+        "- seconds : 0에서 100까지 걸릴 시간(초). 3에서 120 사이\n\n"
+        "SAMPLE_DATA가 켜진 환경에서만 동작한다."
+    ),
+    responses={
+        202: {"model": CreatedResponse, "description": "작업 생성됨"},
+        400: {"model": ErrorResponse, "description": "UNKNOWN_OUTCOME"},
+        404: {"model": ErrorResponse, "description": "예시 데이터가 꺼진 환경"},
+    },
+)
+async def create_demo_analysis(outcome: str = "valid", seconds: float = 20.0):
+    if not SAMPLE_DATA_ENABLED:
+        return JSONResponse(
+            status_code=404,
+            content={"error_code": "NOT_FOUND", "message": "예시 데이터가 꺼져 있습니다"},
+        )
+
+    from sample_data import demo_outcomes, demo_steps
+
+    outcomes = demo_outcomes()
+    if outcome not in outcomes:
+        return JSONResponse(
+            status_code=400,
+            content={"error_code": "UNKNOWN_OUTCOME",
+                     "message": f"고를 수 있는 값: {', '.join(outcomes)}"},
+        )
+
+    seconds = min(max(seconds, 3.0), 120.0)
+    analysis_id = str(uuid.uuid4())
+    # 시연용이라 원본 영상이 없다. video_path는 비워 두어 조회 시 VIDEO_NOT_FOUND가 나간다
+    jobs[analysis_id] = {"status": "RUNNING", "progress": 0, "result": None,
+                         "error": None, "video_path": None}
+
+    short_id = analysis_id[:8]
+    logger.info("[%s] 진행률 시연 작업 생성: outcome=%s %.0f초", short_id, outcome, seconds)
+
+    async def run_demo():
+        try:
+            for start, end, label in demo_steps():
+                # 구간별로 실제 분석과 비슷한 속도로 진행률을 올린다
+                step_seconds = seconds * (end - start) / 100.0
+                for value in range(start + 1, end + 1):
+                    await asyncio.sleep(step_seconds / (end - start))
+                    jobs[analysis_id]["progress"] = value
+                logger.info("[%s] 시연 진행 %d%% (%s)", short_id, end, label)
+
+            if outcome == "error":
+                jobs[analysis_id]["status"] = "ERROR"
+                jobs[analysis_id]["error"] = "시연용 서버 예외"
+                logger.info("[%s] 시연 작업 종료 status=ERROR", short_id)
+                return
+
+            result = outcomes[outcome]
+            jobs[analysis_id]["result"] = result
+            jobs[analysis_id]["status"] = result["status"]
+            logger.info("[%s] 시연 작업 종료 status=%s %s", short_id,
+                        result["status"], result.get("failure_reason", ""))
+        except Exception as e:
+            logger.exception("[%s] 시연 작업 중 예외: %s", short_id, e)
+            jobs[analysis_id]["status"] = "ERROR"
+            jobs[analysis_id]["error"] = str(e)
+
+    asyncio.create_task(run_demo())
 
     return JSONResponse(status_code=202, content={"id": analysis_id})
 

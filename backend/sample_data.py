@@ -51,6 +51,45 @@ def _done(result):
             "result": result, "error": None, "video_path": None}
 
 
+def demo_outcomes():
+    """진행 시연에서 고를 수 있는 결과. 키는 요청의 outcome 값이다."""
+    return {
+        "valid": _result(
+            "VALID", score=78, speed_kmh=93.7,
+            trajectory=_arc(25, (940, 905), (1486, 452), lift=150),
+            confidence=0.82, comment="아마추어를 뛰어넘은 멋진 슈팅! 🔥",
+            processing_time=20.0, image="sample_valid_result.jpg",
+        ),
+        "no-ball": _result(
+            "ANALYSIS_FAILED", failure_reason="BALL_NOT_DETECTED",
+            comment="공을 찾지 못했습니다.", processing_time=20.0,
+        ),
+        "low-confidence": _result(
+            "ANALYSIS_FAILED", failure_reason="LOW_CONFIDENCE",
+            trajectory=_arc(9, (952, 898), (1180, 690), lift=60, frame_step=3),
+            confidence=0.41, comment="탐지가 불안정하여 분석 결과를 신뢰하기 어렵습니다.",
+            processing_time=20.0,
+        ),
+        "track-short": _result(
+            "ANALYSIS_FAILED", failure_reason="TRACK_TOO_SHORT",
+            trajectory=_arc(3, (948, 902), (1010, 846), lift=20),
+            confidence=0.33, comment="오류: 추적된 공 궤적이 너무 짧습니다.",
+            processing_time=20.0,
+        ),
+        # 분석을 시작조차 못 한 경우. 구독하면 complete가 아니라 failed로 온다
+        "error": None,
+    }
+
+
+def demo_steps():
+    """진행률이 지나갈 구간. 연동 가이드에 적은 분석 단계와 같은 순서다."""
+    return [
+        (0, 15, "정지 공 탐색"),
+        (15, 90, "프레임별 탐지·추적"),
+        (90, 100, "궤적 계산"),
+    ]
+
+
 def seed_samples(jobs, calibrations):
     """분석 작업과 보정 작업 저장소에 예시를 채운다."""
 
