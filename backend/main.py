@@ -1,10 +1,10 @@
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, List, Union
+from typing import Annotated, Optional, List, Union
 import shutil
 import os
 import time
@@ -259,9 +259,14 @@ def check_video_constraints(path: str, min_duration_sec: float = MIN_DURATION_SE
         400: {"model": ErrorResponse, "description": "MISSING_FILE"},
         413: {"model": ErrorResponse, "description": "FILE_TOO_LARGE, VIDEO_TOO_LONG, VIDEO_TOO_SHORT"},
         415: {"model": ErrorResponse, "description": "UNSUPPORTED_MEDIA_TYPE, RESOLUTION_TOO_LOW, UNREADABLE_VIDEO"},
+        422: {"model": ErrorResponse, "description": "INVALID_CAPTURE_OPTIONS"},
     },
 )
-async def create_analysis(file: Optional[UploadFile] = File(None)):
+async def create_analysis(
+    file: Optional[UploadFile] = File(None),
+    calibration_id: Annotated[Optional[str], Form()] = None,
+    capture_options: Annotated[Optional[str], Form()] = None,
+):
     if file is None or not file.filename:
         logger.warning("업로드 거절: 파일 없음 → 400 MISSING_FILE")
         return JSONResponse(
@@ -280,6 +285,22 @@ async def create_analysis(file: Optional[UploadFile] = File(None)):
     if not analysis_available():
         logger.warning("분석 요청 거절: 분석 라이브러리 미설치 → 503 ANALYSIS_UNAVAILABLE")
         return analysis_unavailable_response()
+
+    # 촬영 조건과 쓸 보정값을 분석에 넘긴다. 프론트엔드는 보정 식별자만 보내므로
+    # 그 값을 촬영 조건의 보정 선택 항목으로 옮겨 담는다.
+    from capture_context import validate_options
+
+    try:
+        options = json.loads(capture_options) if capture_options else {}
+        if calibration_id:
+            options["intrinsics_profile_id"] = calibration_id
+        options = validate_options(options) if options else None
+    except (ValueError, TypeError) as e:
+        logger.warning("분석 요청 거절: 촬영 조건이 올바르지 않음 → 422 (%s)", e)
+        return JSONResponse(
+            status_code=422,
+            content={"error_code": "INVALID_CAPTURE_OPTIONS", "message": str(e)},
+        )
 
     logger.info("분석 요청 수신: %s", file.filename)
     file_path = save_upload(file, MAX_UPLOAD_BYTES)
@@ -321,7 +342,8 @@ async def create_analysis(file: Optional[UploadFile] = File(None)):
 
         started = time.time()
         try:
-            raw = process_video_with_progress(file_path, output_image_path, on_progress)
+            raw = process_video_with_progress(file_path, output_image_path, on_progress,
+                                              capture_options=options)
             # 분석 결과를 프론트엔드가 쓰는 응답 형식으로 바꾼다
             result = to_api_result(raw, started)
             jobs[analysis_id]["result"] = result
@@ -573,7 +595,10 @@ def get_image(image_name: str):
         415: {"model": ErrorResponse, "description": "UNSUPPORTED_MEDIA_TYPE, RESOLUTION_TOO_LOW, UNREADABLE_VIDEO"},
     },
 )
-async def create_calibration(file: Optional[UploadFile] = File(None)):
+async def create_calibration(
+    file: Optional[UploadFile] = File(None),
+    profile_label: Annotated[Optional[str], Form()] = None,
+):
     if file is None or not file.filename:
         logger.warning("보정 업로드 거절: 파일 없음 → 400 MISSING_FILE")
         return JSONResponse(
@@ -616,7 +641,13 @@ async def create_calibration(file: Optional[UploadFile] = File(None)):
     calibrations[calibration_id] = {"status": "CALIBRATING", "progress": 0,
                                     "result": None, "failure_reason": None}
 
-    output_json_path = os.path.join(UPLOAD_DIR, f"{calibration_id}.json")
+    # 분석은 보정값을 프로필 폴더에서 식별자로 찾는다. 보정 식별자를 그대로
+    # 프로필 식별자로 쓰면 프론트엔드가 받은 값을 분석 요청에 바로 보낼 수 있다.
+    from capture_context import PROFILE_DIR
+
+    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+    output_json_path = str(PROFILE_DIR / f"{calibration_id}.json")
+    label = (profile_label or "").strip() or "카메라 설정"
 
     short_id = calibration_id[:8]
     logger.info("[%s] 보정 작업 생성: %s", short_id, os.path.basename(file_path))
@@ -628,6 +659,13 @@ async def create_calibration(file: Optional[UploadFile] = File(None)):
             outcome = calibrate_camera(file_path, output_json_path, CHESSBOARD_SIZE,
                                        CHESSBOARD_SQUARE_M, 50)
             if outcome.get("ok"):
+                # 프로필 목록에 보여줄 식별자와 이름을 저장된 보정값에 함께 적는다
+                with open(output_json_path, encoding="utf-8") as f:
+                    saved = json.load(f)
+                saved.update(profile_id=calibration_id, profile_label=label)
+                with open(output_json_path, "w", encoding="utf-8") as f:
+                    json.dump(saved, f, ensure_ascii=False, indent=2)
+
                 calibrations[calibration_id]["result"] = outcome
                 calibrations[calibration_id]["status"] = "VALID"
                 logger.info("[%s] 보정 완료 프레임=%d 재투영오차=%.3f %.1f초", short_id,
@@ -652,6 +690,36 @@ async def create_calibration(file: Optional[UploadFile] = File(None)):
     asyncio.get_running_loop().run_in_executor(None, run_calibration)
 
     return JSONResponse(status_code=202, content={"id": calibration_id})
+
+
+class CameraProfile(BaseModel):
+    id: str = Field(description="보정 id. 분석 요청의 calibration_id로 그대로 쓴다")
+    label: str = Field(description="보정할 때 붙인 이름")
+    resolution: List[int] = Field(description="보정에 사용한 해상도 [가로, 세로]")
+    rms_error: float = Field(description="재투영 오차(px)")
+
+
+@app.get(
+    "/camera-profiles",
+    tags=["카메라 보정"],
+    summary="저장된 보정 프로필 목록",
+    description=(
+        "성공한 보정만 목록에 담는다. 분석 요청에 보낼 보정을 고를 때 쓴다.\n\n"
+        "보정 영상과 분석 영상의 화면 비율이 다르면 분석에서 보정이 적용되지 않으므로, "
+        "목록의 resolution을 보고 같은 비율의 보정을 고른다."
+    ),
+    responses={
+        200: {"model": List[CameraProfile], "description": "보정 프로필 목록"},
+        503: {"model": ErrorResponse, "description": "ANALYSIS_UNAVAILABLE"},
+    },
+)
+def camera_profiles():
+    try:
+        from capture_context import list_profiles, PROFILE_DIR
+    except ImportError:
+        logger.warning("보정 목록 거절: 분석 라이브러리 미설치 → 503 ANALYSIS_UNAVAILABLE")
+        return analysis_unavailable_response()
+    return JSONResponse(content={"profiles": list_profiles(PROFILE_DIR)})
 
 
 @app.get(
