@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "reported_date": "2026-10-11",
+  "source": "user_report",
+  "default_condition": "unverified",
+  "notes": "soccer_videos 아래의 상대 경로가 일치하는 영상에 자동 적용한다. 기록에 없는 영상은 촬영 시간을 미확인으로 둔다. 확인된 값만 video_options에 입력한다. 업로드 파일 이름만으로 예시 영상 조건을 적용하지 않는다.",
+  "video_options": {},
+  "reports": [
+    {
+      "videos": ["test_videos/video1.mp4", "test_videos/video2.mp4", "test_videos/video3.mp4", "test_videos/video4.mp4"],
+      "condition": "slow_motion",
+      "certainty": "user_confirmed",
+      "capture_fps": null,
+      "slowdown_factor": null,
+      "speed_comparison": "hold_until_capture_timing_confirmed",
+      "tracking_review": "usable_in_original_frame_coordinates"
+    },
+    {
+      "videos": ["test_videos/video12.mp4", "test_videos/video13.mp4", "test_videos/video14.mp4"],
+      "condition": "possibly_different_camera_or_zoom",
+      "certainty": "user_suspected",
+      "intrinsics_profile_id": null,
+      "speed_comparison": "hold_until_camera_profile_confirmed",
+      "tracking_review": "usable_in_original_frame_coordinates"
+    },
+    {
+      "videos": ["real_test_videos/video10.mp4", "real_test_videos/video11.mp4", "real_test_videos/video12.mp4", "real_test_videos/video13.mp4"],
+      "condition": "zoomed_out",
+      "certainty": "user_confirmed",
+      "intrinsics_profile_id": null,
+      "speed_comparison": "hold_until_camera_profile_confirmed",
+      "tracking_review": "usable_in_original_frame_coordinates"
+    }
+  ]
+}

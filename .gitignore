@@ -138,3 +138,26 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Exceptions must follow the broad *.txt / test_*.py rules above.
+!backend/requirements.txt
+!backend/requirements-ai.txt
+!tests/test_ai_baseline.py
+!tests/test_ball_tracking.py
+!tests/test_shot_physics.py
+!tests/test_analysis_stream.py
+!tests/test_capture_context.py
+!tests/test_ball_observation.py
+!tests/test_ball_size_quality.py
+!tests/test_goal_entry.py
+!tests/test_analyzer_goal_contract.py
+!tests/test_goal_measurement.py
+!tests/test_reference_validation.py
+!tests/test_automatic_analysis.py
+backend/camera_profiles/
+
+# Local results, reports, caches and generated review images.
+/output/
+/tmp/
+/Ultralytics/
+/assets/ai_*/

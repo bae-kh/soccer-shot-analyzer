@@ -1,0 +1,10 @@
+# Versions observed in the working capstone environment; GPU wheel selection is separate.
+numpy==2.0.2
+scipy==1.13.1
+torch==2.5.1
+torchvision==0.20.1
+ultralytics==8.4.21
+# Ultralytics depends on opencv-python; CSRT needs the contrib build.
+# Always verify TrackerCSRT_create after installing these packages.
+opencv-python==4.13.0.92
+opencv-contrib-python==4.13.0.92

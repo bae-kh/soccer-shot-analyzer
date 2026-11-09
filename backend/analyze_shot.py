@@ -1,79 +1,26 @@
 import cv2
 import numpy as np
-import time
-import math
 import os
 import json
-import traceback
 from ultralytics import YOLO
-from scipy.optimize import least_squares
+from ball_tracking import BallTracker, select_initial_ball
+from ball_size_quality import BallSizeInspector
+from goal_geometry import assemble_goal
+from camera_geometry import load_camera, assess_camera_motion
+from shot_physics import estimate_shot
+from capture_context import build_context, DEFAULT_AUTOMATIC_OPTIONS
+from trajectory_render import result_image, goal_entry_image
+from goal_entry import assess_goal_entry, goal_camera_interval
+from goal_measurement import assess_physical_goal, score_shot, score_week9
+from automatic_analysis import predict_goal, automatic_comment
 
-class TrajectoryOptimizer:
-    def __init__(self, F_px, cx, cy):
-        self.F_px = F_px
-        self.cx = cx
-        self.cy = cy
-        self.g = 9.81 
 
-    def _project(self, params, t_arr):
-        # [V2.5] Added Ax for Magnus Effect
-        X0, Y0, Z0, Vx, Vy, Vz, Ax = params
-        u_p, v_p = [], []
-        for t in t_arr:
-            X = X0 + Vx * t + 0.5 * Ax * t**2
-            Y = Y0 + Vy * t + 0.5 * self.g * t**2
-            Z = Z0 + Vz * t
-            if Z < 0.1: Z = 0.1
-            u_p.append(self.F_px * (X / Z) + self.cx)
-            v_p.append(self.F_px * (Y / Z) + self.cy)
-        return np.array(u_p), np.array(v_p)
-
-    def _residuals(self, params, t_arr, u_obs, v_obs):
-        u_p, v_p = self._project(params, t_arr)
-        # [V2.5] Origin Pinning Formula
-        weights = np.exp(-1.0 * t_arr)
-        weights[0] += 100000.0  # Massive penalty for missing the exact kick point
-        
-        res_u = (u_obs - u_p) * weights
-        res_v = (v_obs - v_p) * weights
-        return np.concatenate((res_u, res_v))
-
-    def optimize(self, t_arr, u_obs, v_obs, r0):
-        if len(t_arr) < 5: return None
-        
-        Z0_guess = (self.F_px * 0.11) / r0 if r0 > 0 else 5.0
-        X0_guess = (u_obs[0] - self.cx) * Z0_guess / self.F_px
-        Y0_guess = (v_obs[0] - self.cy) * Z0_guess / self.F_px
-        
-        idx = min(len(t_arr)-1, max(3, len(t_arr)//2))
-        dt = t_arr[idx] - t_arr[0]
-        if dt <= 0: return None
-        
-        u_end, v_end = u_obs[idx], v_obs[idx]
-        Z_end_guess = Z0_guess + 10.0 
-        X_end_guess = (u_end - self.cx) * Z_end_guess / self.F_px
-        Y_end_guess = (v_end - self.cy) * Z_end_guess / self.F_px
-        
-        Vx_guess = (X_end_guess - X0_guess) / dt
-        Vy_guess = (Y_end_guess - Y0_guess) / dt
-        Vz_guess = (Z_end_guess - Z0_guess) / dt
-        Ax_guess = 0.0 # Assume straight initially
-        
-        initial_guess = [X0_guess, Y0_guess, Z0_guess, Vx_guess, Vy_guess, Vz_guess, Ax_guess]
-        
-        bounds = (
-            [-20.0, -20.0,  0.5, -40.0, -40.0,   2.0, -40.0], 
-            [ 20.0,  20.0, 30.0,  40.0,  40.0,  55.0,  40.0]  
-        )
-        
-        try:
-            res = least_squares(self._residuals, initial_guess, args=(t_arr, u_obs, v_obs), bounds=bounds, method='trf')
-            if res.success:
-                return res.x
-        except Exception as e:
-            print(f"[Optimizer] Failed: {e}")
-            
-        return None
+def _goal_outputs(goal_entry, physical, physics, context):
+    goal_entry['physical_goal_status'] = physical['status']
+    prediction = predict_goal(physical) if context['analysis_mode'] == 'automatic' else None
+    custom_rules = context['options'].get('scoring_rules')
+    score = score_week9(physical, physics) if custom_rules is None else score_shot(physical, physics, custom_rules)
+    return prediction, score
 
 class HybridTracker:
     def __init__(self):
@@ -82,10 +29,15 @@ class HybridTracker:
         self.missed_yolo = 0
         
     def init(self, frame, u, v, w, h):
-        x = int(max(0, u - w/2))
-        y = int(max(0, v - h/2))
-        w = int(w)
-        h = int(h)
+        height, width = frame.shape[:2]
+        x = int(max(0, min(width, u - w / 2)))
+        y = int(max(0, min(height, v - h / 2)))
+        right = int(max(0, min(width, u + w / 2)))
+        bottom = int(max(0, min(height, v + h / 2)))
+        w, h = right - x, bottom - y
+        if w < 2 or h < 2:
+            self.is_tracking = False
+            return
         self.csrt = cv2.TrackerCSRT_create()
         self.csrt.init(frame, (x, y, w, h))
         self.is_tracking = True
@@ -116,18 +68,18 @@ class HybridTracker:
 class ProShootingAnalyzer:
     def __init__(self, callback=None):
         self.callback = callback
-        print("[V2.5 Initializing] Loading YOLO Model...")
+        print("[V3 Initializing] Loading YOLO Model...")
         current_dir = os.path.dirname(os.path.abspath(__file__))
         yolo_path = os.path.join(current_dir, 'yolov8s.pt')
         self.model = YOLO(yolo_path)
         self.cam_mtx = None
         self.cam_dist = None
         self.F_px = 640.0 
-        self.REAL_RADIUS_M = 0.11
         self.calibrated_from_json = False
+        self.goal_area = None
         
-    def detect_goal_focal_length(self, cap, width, height):
-        print("[V2.5] Scanning for goal to absolute-calibrate...")
+    def detect_goal_area(self, cap, width, height):
+        print("[V3 Geometry] Scanning for goal area (not camera calibration)...")
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             goal_model_path = os.path.join(current_dir, 'goal_segment_best.pt')
@@ -137,279 +89,276 @@ class ProShootingAnalyzer:
                 
             goal_model = YOLO(goal_model_path)
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            best_w = 0
-            # [V2.5] Scan for up to 20 frames to find goal width
-            for _ in range(20):
+            best_goal = None
+            # Goal geometry is a detected area; it does not determine focal length.
+            for frame_number in range(20):
                 ret, frame = cap.read()
                 if not ret: break
                 results = goal_model(frame, imgsz=640, verbose=False, conf=0.04)
-                if results[0].masks:
-                    for seg in results[0].masks.xy:
-                        if len(seg) > 5:
-                            rect = cv2.boundingRect(np.int32(seg))
-                            gw = rect[2]
-                            if best_w < gw < width * 0.95:
-                                best_w = gw
-            if best_w > 0:
-                # [V2.5] Absolute Calibration (Assume 16 meters to goal, Goal width 7.32m)
-                F_px = (16.0 * best_w) / 7.32
-                print(f"[V2.5] 🥅 Goal detected! Width: {best_w}px. Absolute Calibrated F_px: {F_px:.1f}")
-                return F_px
+                result = results[0]
+                parts = []
+                for index, box in enumerate(result.boxes):
+                    confidence = float(box.conf[0])
+                    parts.append({'bbox': box.xyxy[0].cpu().tolist(), 'confidence': confidence, 'method': 'box'})
+                    if result.masks is not None and index < len(result.masks.xy):
+                        polygon = result.masks.xy[index]
+                        if len(polygon) > 2:
+                            x, y, w, h = cv2.boundingRect(np.int32(polygon))
+                            parts.append({'bbox': [x, y, x + w, y + h], 'confidence': confidence, 'method': 'mask'})
+                area = assemble_goal(parts, width, height, frame_number)
+                if area and (best_goal is None or area['confidence'] > best_goal['confidence']):
+                    best_goal = area
+            if best_goal is not None:
+                self.goal_area = best_goal
+                print(f"[V3 Geometry] Goal area detected: {best_goal['bbox']}")
+                return best_goal
         except Exception as e:
-            print(f"[V2.5] Goal calibration failed: {e}")
+            print(f"[V3 Geometry] Goal area detection failed: {e}")
         return None
         
-    def setup_calibration(self, width, height, calib_file="calibration.json"):
-        if os.path.exists(calib_file):
-            with open(calib_file, "r") as f:
-                data = json.load(f)
-                cam_mtx = np.array(data["camera_matrix"])
-                self.cam_mtx = cam_mtx
-                self.cam_dist = np.array(data["dist_coeffs"])
-                calib_w = data.get("resolution", [1920, 1080])[0]
-                scale = width / calib_w
-                self.F_px = cam_mtx[0,0] * scale
-                self.calibrated_from_json = True
-                print(f"[V2.5] JSON Calibrated Focal Length loaded: {self.F_px:.1f}")
-        else:
-            self.calibrated_from_json = False
-            self.F_px = (width / 2.0) / math.tan(math.radians(60) / 2.0)
-            print(f"[V2.5] Fallback Initial Focal Length: {self.F_px:.1f}")
+    def setup_calibration(self, width, height, calib_file=None):
+        self.camera = load_camera(width, height, calibration_path=calib_file)
+        self.cam_mtx = self.camera.matrix
+        self.cam_dist = self.camera.distortion
+        self.F_px = self.camera.matrix[0, 0]
+        self.calibrated_from_json = self.camera.calibrated
+        print(f"[V3 Geometry] Camera: {self.camera.source}; warnings={self.camera.warnings}")
 
-    def run(self, video_path, output_path):
+    def extract_balls(self, frame):
+        result = self.model(frame, imgsz=640, verbose=False, conf=0.04)[0]
+        return [{"bbox": box.xywh[0].cpu().tolist(), "confidence": float(box.conf[0])}
+                for box in result.boxes if int(box.cls[0]) == 32]
+
+    def recover_in_roi(self, frame, tracker):
+        # A crop gives a small distant ball more pixels at the same YOLO input size.
+        center = tracker.filter.state[:2] + tracker.filter.state[3:5] / tracker.fps
+        side = int(max(160, min(tracker.width, tracker.height) * 0.25,
+                       tracker.filter.state[2] * 8, tracker._gate() * 2))
+        side = min(side, int(min(tracker.width, tracker.height) * 0.65))
+        x1, y1 = max(0, int(center[0] - side / 2)), max(0, int(center[1] - side / 2))
+        x2, y2 = min(tracker.width, x1 + side), min(tracker.height, y1 + side)
+        if x2 - x1 < 32 or y2 - y1 < 32:
+            return []
+        result = self.model(frame[y1:y2, x1:x2], imgsz=640, verbose=False, conf=0.1)[0]
+        detections = []
+        for box in result.boxes:
+            if int(box.cls[0]) == 32:
+                u, v, w, h = box.xywh[0].cpu().tolist()
+                detections.append({"bbox": [u + x1, v + y1, w, h], "confidence": float(box.conf[0]), "detector": "roi"})
+        return detections
+
+    def draw_tracking(self, frame, tracker, record):
+        image = frame.copy()
+        if self.goal_area:
+            x1, y1, x2, y2 = map(int, self.goal_area["bbox"])
+            cv2.rectangle(image, (x1, y1), (x2, y2), (255, 180, 0), 2)
+        shot = [r for r in tracker.trajectory() if r["x"] is not None]
+        for left, right in zip(shot, shot[1:]):
+            # Do not draw a continuous observation across a long missing interval.
+            if right["frame_number"] - left["frame_number"] > tracker.prediction_limit:
+                continue
+            color = (0, 200, 0) if right["observed"] else (255, 0, 255)
+            cv2.line(image, (int(left["x"]), int(left["y"])), (int(right["x"]), int(right["y"])), color, 2)
+        if record["x"] is not None:
+            center = (int(record["x"]), int(record["y"]))
+            cv2.circle(image, center, max(2, int(record["radius_px"])), (0, 255, 255), 2)
+        if record["ball_bbox"] is not None:
+            x1, y1, x2, y2 = map(int, record["ball_bbox"])
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0) if record["source"] == "yolo" else (0, 180, 255), 1)
+        text = f"frame {record['frame_number']} | {record['source']} | {'SHOT' if tracker.active else 'WAITING'}"
+        cv2.putText(image, text, (20, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        return image
+
+    def run(self, video_path, output_path, capture_options=None):
+        if not capture_options:
+            capture_options = dict(DEFAULT_AUTOMATIC_OPTIONS)
         cap = cv2.VideoCapture(video_path)
-        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        if not cap.isOpened():
+            cap.release()
+            raise ValueError("Could not open video")
+        reported_fps = cap.get(cv2.CAP_PROP_FPS)
+        fps = reported_fps if np.isfinite(reported_fps) and reported_fps > 0 else 30.0
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        
-        self.setup_calibration(width, height)
-        # [V2.5] Dynamic Goal-Scaling Fallback
-        if not self.calibrated_from_json:
-             dynamic_F = self.detect_goal_focal_length(cap, width, height)
-             if dynamic_F is not None:
-                 self.F_px = dynamic_F
-                 
-        optimizer = TrajectoryOptimizer(self.F_px, width/2, height/2)
-        tracker = HybridTracker()
-        
+        try:
+            self.camera, measurement_context = build_context(video_path, width, height, fps,
+                                                            fps != reported_fps, capture_options)
+        except Exception:
+            cap.release()
+            raise
+        self.detect_goal_area(cap, width, height)
         out_path = output_path
-        
-        # 1. Pre-flight sweep for initial ball
-        print("[V2.5] Phase 1: Static Ball Sweep")
-        static_candidates = []
-        best_centered_score = -9999.0
-        initial_ball_box = None
-        
+        metadata = {"width": width, "height": height, "fps": fps, "frame_count": total_frames,
+                    "fps_fallback": fps != reported_fps, "coordinate_space": "original_pixels",
+                    "origin": "top_left", "frame_index_base": 0}
+        metadata['tracking_time_basis'] = 'file_playback_time'
+        metadata['measurement_context'] = measurement_context
+        print("[V3 Tracking] Phase 1: Initial Ball Sweep")
+        preview = []
+        first_preview_image = None
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        for _ in range(15):
+        for frame_number in range(min(30, max(15, int(fps)))):
             ret, frame = cap.read()
-            if not ret: break
-            results = self.model(frame, imgsz=640, verbose=False, conf=0.1)
-            for r in results:
-                for box in r.boxes:
-                    if int(box.cls[0]) == 32:
-                        u, v, w, h = box.xywh[0].cpu().numpy()
-                        conf = float(box.conf[0])
-                        if 0.6 < w/h < 1.66:
-                            cx_dist = abs(u - width/2) / width
-                            cy_dist = abs(v - height*0.75) / height
-                            score = conf - (cx_dist + cy_dist)*0.5
-                            if score > best_centered_score:
-                                best_centered_score = score
-                                initial_ball_box = (u, v, w, h)
-                                
-        if initial_ball_box:
-            print(f"[V2.5] Locked static ball at ({initial_ball_box[0]:.0f}, {initial_ball_box[1]:.0f})")
-        else:
-            print("[V2.5] No static ball found. Returning error.")
-            return {"score": 0, "speed": 0, "comment": "공을 찾지 못했습니다.", "trajectory_image": os.path.basename(out_path)}
-            
-        # 2. Main Tracking Loop
-        print("[V2.5] Phase 2: Main Tracking")
-        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        
-        flight_active = False
-        tracked_t, tracked_u, tracked_v = [], [], []
-        r0 = min(initial_ball_box[2], initial_ball_box[3]) / 2.0
-        
+            if not ret:
+                break
+            if first_preview_image is None:
+                first_preview_image = frame.copy()
+            preview.append((frame_number, self.extract_balls(frame)))
+        initial = select_initial_ball(preview, width, height)
+        if initial is None:
+            cap.release()
+            physics = estimate_shot([], metadata, self.camera)
+            physics['failure_reason'] = 'BALL_NOT_FOUND'
+            fallback = first_preview_image if first_preview_image is not None else np.zeros((height, width, 3), dtype=np.uint8)
+            if not cv2.imwrite(out_path, result_image(fallback, [], physics, self.goal_area)):
+                raise RuntimeError('Could not save failure image')
+            summary = {"kick_detected": False, "observed_points": 0, "tracking_status": "INSUFFICIENT"}
+            goal_entry = assess_goal_entry([], self.goal_area, metadata, summary)
+            physical_goal = assess_physical_goal([], metadata, self.camera, summary, {},
+                                                measurement_context['options'].get('goal_plane'))
+            prediction, score_evaluation = _goal_outputs(goal_entry, physical_goal, physics, measurement_context)
+            return {"score": score_evaluation['value'], "speed": None, "comment": "공을 찾지 못했습니다.",
+                    "score_status": score_evaluation['status'],
+                    "trajectory_image": os.path.basename(out_path), "trajectory": [],
+                    "video_metadata": metadata, "goal_area": self.goal_area,
+                    "tracking_summary": summary, "goal_entry": goal_entry,
+                    "physical_goal": physical_goal, "goal_prediction": prediction,
+                    "analysis_mode": measurement_context['analysis_mode'], "score_evaluation": score_evaluation,
+                    **physics}
+        print(f"[V3 Tracking] Initial ball: {initial['bbox'][:2]}")
+        cap.set(cv2.CAP_PROP_POS_FRAMES, initial['frame_number'])
+        readable_seed, seed_frame = cap.read()
+        if not readable_seed:
+            cap.release()
+            raise RuntimeError('Could not read initial ball appearance frame')
+        tracker = BallTracker(initial, width, height, fps, initial_frame=seed_frame)
+        size_inspector = BallSizeInspector(seed_frame, initial['bbox'])
+        csrt = HybridTracker()
+        debug_path = os.path.splitext(out_path)[0] + "_tracking.mp4"
+        track_path = os.path.splitext(out_path)[0] + "_tracking.json"
+        writer = cv2.VideoWriter(debug_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height))
+        if not writer.isOpened():
+            cap.release()
+            raise RuntimeError("Could not create tracking video")
         first_track_frame = None
         last_static_frame = None
-        
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        preview_by_frame = dict(preview)
         frame_idx = 0
-        while True:
-            ret, frame_raw = cap.read()
-            if not ret: break
-            frame_idx += 1
-            t = frame_idx / fps
-            
-            if self.cam_mtx is not None:
-                frame = cv2.undistort(frame_raw, self.cam_mtx, self.cam_dist, None, self.cam_mtx)
-            else:
-                frame = frame_raw
-                
-            if self.callback and frame_idx % 5 == 0:
-                prog = 15 + int(frame_idx / total_frames * 75)
-                self.callback(prog)
-                
-            yolo_res = self.model(frame, imgsz=640, verbose=False, conf=0.04)
-            best_yolo = None
-            min_dist = 9999
-            
-            # Extract all balls
-            for r in yolo_res:
-                for box in r.boxes:
-                    if int(box.cls[0]) == 32:
-                        u, v, w, h = box.xywh[0].cpu().numpy()
-                        conf = float(box.conf[0])
-                        ratio = w / (h + 1e-5)
-                        
-                        if flight_active:
-                            if conf < 0.04: continue
-                        else:
-                            if conf < 0.15 or not (0.7 < ratio < 1.4): continue
-                            
-                        # If active, pick closest to tracker pred / last point
-                        if flight_active and len(tracked_u) > 0:
-                            dist = np.sqrt((u - tracked_u[-1])**2 + (v - tracked_v[-1])**2)
-                            if dist < min_dist and dist < 200:
-                                min_dist = dist
-                                best_yolo = (u,v,w,h)
-                        else:
-                            # Pre kick, compare to static
-                            dist = np.sqrt((u - initial_ball_box[0])**2 + (v - initial_ball_box[1])**2)
-                            if dist < 15:
-                                last_static_frame = frame.copy()
-                            elif 30 < dist < 120 and conf > 0.05:
-                                best_yolo = (u,v,w,h)
-                                
-            # State Machine
-            if not flight_active:
-                if best_yolo is not None:
-                    # KICK DETECTED!
-                    flight_active = True
-                    first_track_frame = last_static_frame if last_static_frame is not None else frame.copy()
-                    
-                    # 앵커(Anchor) 추가
-                    tracked_t.append(t)
-                    tracked_u.append(initial_ball_box[0])
-                    tracked_v.append(initial_ball_box[1])
-                    
-                    # 첫 트래커 초기화
-                    tracker.init(frame, best_yolo[0], best_yolo[1], best_yolo[2], best_yolo[3])
-                    tracked_t.append(t + 0.001) 
-                    tracked_u.append(best_yolo[0])
-                    tracked_v.append(best_yolo[1])
-                    print(f"[V2.5] ⚽ KICK! Initialized at {best_yolo[0]:.0f}, {best_yolo[1]:.0f}")
-            else:
-                # Active tracking
-                track_res = tracker.update(frame, best_yolo)
-                if track_res is not None:
-                    tracked_t.append(t)
-                    tracked_u.append(track_res[0])
-                    tracked_v.append(track_res[1])
-                else:
-                    # Tracking lost (e.g. out of frame or into net)
-                    print(f"[V2.5] Tracking ended at frame {frame_idx}")
+        print("[V3 Tracking] Phase 2: Kalman Tracking")
+        try:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
                     break
-                    
-        cap.release()
-        
-        # 3. Trajectory Fitting
-        print(f"[V2.5] Phase 3: Trajectory Optimization with {len(tracked_t)} points")
-        if len(tracked_t) < 5:
-            return {"score": 0, "speed": 0, "comment": "오류: 추적된 공 궤적이 너무 짧습니다.", "trajectory_image": os.path.basename(out_path)}
-            
-        t_arr = np.array(tracked_t) - tracked_t[0]
-        u_obs = np.array(tracked_u)
-        v_obs = np.array(tracked_v)
-        
-        best_params = optimizer.optimize(t_arr, u_obs, v_obs, r0)
-        
-        if best_params is None:
-            return {"score": 0, "speed": 0, "comment": "오류: 궤적 피팅에 실패했습니다.", "trajectory_image": os.path.basename(out_path)}
-            
-        X0, Y0, Z0, Vx, Vy, Vz, Ax = best_params
-        
-        # Calculate speed (magnitude of initial velocity vector) in km/h
-        speed_ms = np.sqrt(Vx**2 + Vy**2 + Vz**2)
-        speed_kmh = speed_ms * 3.6
-        if speed_kmh > 150.0: speed_kmh = 150.0  # Biological limit cap
-        print(f"[V2.5] Optimized Initial Speed: {speed_kmh:.1f} km/h (Magnus Ax: {Ax:.1f})")
-        
-        # 4. Visualization [V2.5] - Predictive Extrapolation
-        if first_track_frame is not None:
-            result_img = first_track_frame
+                detections = preview_by_frame.get(frame_idx)
+                if detections is None:
+                    detections = self.extract_balls(frame)
+                tracker.prepare_frame(frame_idx, frame)
+                if tracker.active:
+                    candidate = tracker._associate(detections, frame)
+                    if candidate is None or candidate["confidence"] < 0.12:
+                        detections = detections + self.recover_in_roi(frame, tracker)
+                was_active = tracker.active
+                record, detection = tracker.step(frame_idx, detections, lambda: csrt.update(frame), frame=frame)
+                record['ball_size_quality'] = (size_inspector.inspect(frame, record['ball_bbox'])
+                                               if record['source'] == 'yolo' and record['ball_bbox'] else None)
+                if any(r['source'] == 'csrt' for r in record['rejected_observations']):
+                    csrt.is_tracking = False
+                if detection is not None and tracker.active:
+                    csrt.init(frame, *detection["bbox"])
+                if not tracker.active and tracker.last_static_frame == frame_idx and record["observed"]:
+                    last_static_frame = frame.copy()
+                if tracker.active and not was_active:
+                    first_track_frame = last_static_frame if last_static_frame is not None else frame.copy()
+                    print(f"[V3 Tracking] KICK! Initialized at frame {frame_idx}")
+                writer.write(self.draw_tracking(frame, tracker, record))
+                if self.callback and frame_idx % 5 == 0:
+                    self.callback(15 + int(frame_idx / max(1, total_frames) * 75))
+                frame_idx += 1
+                if tracker.finished:
+                    break
+        finally:
+            cap.release()
+            writer.release()
+        trajectory = tracker.trajectory()
+        summary = tracker.summary()
+        summary["tracking_status"] = "TRACKED" if summary["observed_points"] >= 5 else "INSUFFICIENT"
+        motion_start = summary['shot_start_frame'] or 0
+        physical_fps = measurement_context['timing']['effective_capture_fps']
+        motion_end = min(len(tracker.records) - 1, motion_start + round((physical_fps or fps) * .45))
+        camera_motion = assess_camera_motion(video_path, motion_start, motion_end)
+        physics = estimate_shot(trajectory, metadata, self.camera, camera_motion)
+        summary['flight_observations'] = physics['flight_segment'].get('point_count', 0)
+        # The goal rectangle was detected near the start, so the early speed
+        # window's camera check is insufficient for a later region entry.
+        goal_motion_start, goal_motion_end = goal_camera_interval(trajectory, self.goal_area, len(tracker.records) - 1)
+        goal_plane = measurement_context['options'].get('goal_plane')
+        if goal_plane:
+            goal_motion_start = min(goal_motion_start, goal_plane['reference_frame'])
+            goal_motion_end = max(goal_motion_end, goal_plane['reference_frame'])
+        goal_motion = assess_camera_motion(video_path, goal_motion_start, goal_motion_end)
+        goal_motion['frame_interval'] = [goal_motion_start, goal_motion_end]
+        goal_entry = assess_goal_entry(trajectory, self.goal_area, metadata, summary, goal_motion)
+        physical_goal = assess_physical_goal(trajectory, metadata, self.camera, summary, goal_motion, goal_plane)
+        prediction, score_evaluation = _goal_outputs(goal_entry, physical_goal, physics, measurement_context)
+        print(f"[V3 Geometry] Measurement: {physics['measurement_status']}; reason={physics['failure_reason']}; speed={physics['speed']}")
+        print(f"[V3 Geometry] Flight window has {summary['flight_observations']} trusted YOLO points")
+        # A result image is still saved when metric estimation is unavailable.
+        if first_track_frame is None:
+            first_track_frame = first_preview_image
+        observed_path = os.path.splitext(out_path)[0] + "_observed.jpg"
+        for target, only_observations in [(out_path, False), (observed_path, True)]:
+            rendered = result_image(first_track_frame, trajectory, physics, self.goal_area, only_observations)
+            if not cv2.imwrite(target, rendered):
+                raise RuntimeError("Could not save result image")
+        goal_image_path = os.path.splitext(out_path)[0] + '_goal_entry.jpg'
+        evidence_frame = (goal_entry['events'][0]['confirmation_frame'] if goal_entry['events'] else
+                          next((r['frame_number'] for r in reversed(trajectory) if r['observed']), motion_start))
+        if physical_goal['events']:
+            evidence_frame = physical_goal['events'][0]['behind_frame']
+        evidence_cap = cv2.VideoCapture(video_path)
+        try:
+            evidence_cap.set(cv2.CAP_PROP_POS_FRAMES, evidence_frame)
+            readable, evidence_image = evidence_cap.read()
+        finally:
+            evidence_cap.release()
+        if not readable:
+            evidence_image = first_track_frame
+            goal_entry['warnings'].append('EVIDENCE_FRAME_UNREADABLE_USING_START_FRAME')
+        goal_entry['image_frame'] = evidence_frame if readable else None
+        if not cv2.imwrite(goal_image_path, goal_entry_image(evidence_image, trajectory, goal_entry, physical_goal, score_evaluation)):
+            raise RuntimeError('Could not save goal entry image')
+        with open(track_path, "w", encoding="utf-8") as stream:
+            json.dump({"video_metadata": metadata, "goal_area": self.goal_area, "tracking_summary": summary,
+                       "initial_detection": initial, "frames": tracker.records, "trajectory": trajectory,
+                       "physics": physics, "goal_entry": goal_entry,
+                       "physical_goal": physical_goal, "goal_prediction": prediction,
+                       "analysis_mode": measurement_context['analysis_mode'], "score_evaluation": score_evaluation}, stream, ensure_ascii=False, indent=2, allow_nan=False)
+        if physics['measurement_status'] == 'ESTIMATED':
+            comment = "초기 비행 구간의 속도 추정입니다. 실측 정확도는 검증하지 않았습니다."
+            if not self.camera.calibrated:
+                comment += " 카메라 보정이 없어 기본 화각을 가정했습니다."
         else:
-            result_img = np.zeros((height, width, 3), dtype=np.uint8)
-            
-        # Add 0.4 seconds of extra prediction into the future
-        future_frames = int(0.4 * fps)
-        t_ext = list(t_arr)
-        last_t = t_arr[-1]
-        for i in range(1, future_frames + 1):
-             t_ext.append(last_t + i / fps)
-        t_ext = np.array(t_ext)
-        
-        u_p, v_p = optimizer._project(best_params, t_ext)
-        
-        points = []
-        for i in range(len(u_p)):
-            points.append((int(u_p[i]), int(v_p[i])))
-            
-        real_len = len(t_arr)
-            
-        # Draw actual track (solid, color gradient)
-        for i in range(1, len(points)):
-            t_ratio = i / real_len if i < real_len else 1.0
-            
-            if i < real_len:
-                color = (0, int(255*(1-t_ratio)), int(255*t_ratio))
-                thickness = max(2, int(2 + 4 * t_ratio))
-                cv2.line(result_img, points[i-1], points[i], color, thickness, cv2.LINE_AA)
-            else:
-                # [V2.5] Future Prediction fading out (Broadcast style dashed/translucent effect)
-                alpha = max(0, 1.0 - (i - real_len) / future_frames)
-                color = (int(200*alpha), int(200*alpha), 255) # Fading white-red
-                thickness = max(1, int(5 * alpha))
-                
-                # Manual dash by skipping every other frame
-                if i % 2 == 0:
-                     cv2.line(result_img, points[i-1], points[i], color, thickness, cv2.LINE_AA)
-            
-        if len(points) > 0:
-            cv2.circle(result_img, points[0], 12, (0, 255, 0), -1) 
-            cv2.circle(result_img, points[0], 15, (255, 255, 255), 2) # Anchor halo
-            
-            # End of actual tracking marker
-            if real_len - 1 < len(points):
-                cv2.circle(result_img, points[real_len-1], 8, (0, 80, 255), -1)
-        
-        # Put Text
-        text_color = (0, 255, 255)
-        text_str = f"SPEED: {speed_kmh:.1f} KM/H"
-        cv2.putText(result_img, text_str, (50, 70), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0,0,0), 6) # Shadow
-        cv2.putText(result_img, text_str, (50, 70), cv2.FONT_HERSHEY_SIMPLEX, 1.5, text_color, 3) 
-        
-        if abs(Ax) > 5.0:
-            curve_str = "CURVE SHOT DETECTED!"
-            cv2.putText(result_img, curve_str, (50, 130), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 255), 3)
-            
-        cv2.imwrite(out_path, result_img)
-        
-        if self.callback: self.callback(100)
-        
-        # Comment Gen
-        comment = ""
-        if speed_kmh > 100: comment = "상위 1% 급의 미친 대포알 슈팅입니다! 🚀"
-        elif speed_kmh > 80: comment = "아마추어를 뛰어넘은 멋진 슈팅! 🔥"
-        else: comment = "더 강하게 찰 수 있습니다! 화이팅! 💨"
-        
-        score = min(100, int(speed_kmh / 1.3))
-        
-        return {"score": score, "speed": round(speed_kmh, 1), "comment": comment, "trajectory_image": os.path.basename(out_path)}
+            comment = "신뢰할 수 있는 속도를 계산하지 못했습니다: " + physics['failure_reason']
+        if score_evaluation['status'] == 'PROVISIONAL':
+            comment = score_evaluation['comment']
+        if prediction:
+            comment = automatic_comment(prediction, physics, score_evaluation)
+        if self.callback:
+            self.callback(100)
+        return {"score": score_evaluation['value'], "score_status": score_evaluation['status'], "comment": comment,
+                "trajectory_image": os.path.basename(out_path), "observation_image": os.path.basename(observed_path),
+                "trajectory": trajectory, "video_metadata": metadata, "goal_area": self.goal_area,
+                "tracking_summary": summary, "tracking_video": os.path.basename(debug_path),
+                "tracking_data": os.path.basename(track_path), "goal_entry": goal_entry,
+                "physical_goal": physical_goal, "goal_prediction": prediction,
+                "analysis_mode": measurement_context['analysis_mode'], "score_evaluation": score_evaluation,
+                "goal_entry_image": os.path.basename(goal_image_path), **physics}
 
-def process_video_with_progress(video_path, output_path, callback=None):
+
+def process_video_with_progress(video_path, output_path, callback=None, capture_options=None):
     print(f"[MAIN] Processing started for {video_path}")
     analyzer = ProShootingAnalyzer(callback)
-    return analyzer.run(video_path, output_path)
+    return analyzer.run(video_path, output_path, capture_options)
