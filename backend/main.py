@@ -106,7 +106,7 @@ class AnalysisResult(BaseModel):
     status: str = Field(description="VALID 또는 ANALYSIS_FAILED")
     score: int = Field(description="슈팅 점수 0~100")
     speed_kmh: float = Field(description="추정 슈팅 속도 (km/h)")
-    goal: bool = Field(description="골인 여부. 판정 로직 미구현으로 현재는 항상 false")
+    goal: bool = Field(description="골인 추정 결과. 골대 밖 통과와 판정 불가가 모두 false로 나간다")
     trajectory: List[TrajectoryPoint] = Field(description="공 궤적 좌표 시퀀스")
     fps: float = Field(description="영상의 초당 프레임 수")
     frame_size: FrameSize = Field(description="좌표 기준 해상도")

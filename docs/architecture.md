@@ -85,26 +85,40 @@
 
 README 기준 핵심 구조는 다음과 같다.
 
-backend
+backend — API 계층
 
-- main.py: FastAPI API와 SSE
-- analyze_shot.py: CV/궤적 분석 파이프라인
-- calibrate.py: 카메라 캘리브레이션 유틸리티
-- requirements.txt: 백엔드 의존성 목록
+- main.py: 엔드포인트, 작업 상태 관리, SSE 진행률 전달
+- result_adapter.py: 분석 결과를 API 응답 형식으로 변환
+- calibrate.py: 체스보드 영상으로 카메라 보정값 계산
+- sample_data.py: 연동용 예시 작업 (분석이 가능해지면 제거)
+- test_api.py: API 동작 검증
+- requirements.txt: 분석까지 포함한 전체 의존성
+- requirements-api.txt: API 서버만 띄울 때의 최소 의존성
+- requirements-ai.txt: 분석 라이브러리
 
-frontend
+backend — 분석 계층 (AI 파트)
 
-- package.json
-- src/App.jsx
-- src/components/Upload.jsx: 업로드 화면
-- src/components/Progress.jsx: 진행률 표시 화면
-- src/components/Result.jsx: 결과 화면
+- analyze_shot.py: 분석 전체 흐름
+- ball_tracking.py, ball_observation.py, ball_size_quality.py: 공 탐지와 추적
+- shot_physics.py: 속도 추정
+- camera_geometry.py, capture_context.py: 카메라 모델과 촬영 조건, 보정 프로필
+- goal_measurement.py, goal_entry.py, goal_geometry.py: 골인 판정
+- automatic_analysis.py, trajectory_render.py: 자동 모드와 결과 이미지
+
+tests, tools
+
+- 분석 계층의 단위 테스트와 검증 도구 (AI 파트)
 
 docs
 
-- limitations.md, api_spec.md, architecture.md 등 팀 문서
+- api_spec.md: 설계 배경과 전체 명세
+- integration_guide.md: 프론트엔드 연동용 요약 문서
+- architecture.md: 이 문서
+- ai_*.md, week9_*.md: 분석 계층 설계 기록 (AI 파트)
 
-이 구조가 공식 기준이므로, 향후 코드 정리 시 각 파일의 역할이 위 구조와 일치하도록 맞춘다. (requirements.txt 미생성, Progress.jsx 컴포넌트 부재 등 현재 코드가 이 구조와 다른 부분은 앞으로 채워야 할 항목으로 별도 관리한다.)
+프론트엔드는 8주차부터 별도 저장소에서 관리한다. 프론트엔드와 백엔드가 HTTP로만 통신하여 코드를 공유할 필요가 없기 때문이다. 이 저장소의 frontend 폴더는 초기 프로토타입이며 현재 화면과 다르다.
+
+**API 계층과 분석 계층은 result_adapter.py에서만 만난다.** 분석 계층의 반환 형태가 바뀌어도 그 파일만 고치면 프론트엔드가 쓰는 응답은 그대로 유지된다.
 
 ---
 
