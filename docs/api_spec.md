@@ -173,6 +173,8 @@ complete와 failed의 구분 기준은 2주차에 정한 원칙 그대로다. �
 | score               | int    | 슈팅 점수 (0~100, 속도 기반 산정: min(100, speed_kmh 나누기 1.3))                              |
 | speed_kmh           | float  | 추정 슈팅 속도 (km/h, 최대 150으로 상한)                                                       |
 | goal                | bool   | 골인 추정. 골대 밖 통과와 판정 불가가 모두 false로 나간다                                      |
+| goal_status         | string | GOAL(골대 안쪽 통과), OUTSIDE(바깥쪽 통과), UNDETERMINED(판정 불가)                            |
+| score_status        | string | EVALUATED 또는 NOT_EVALUATED. score의 0이 실제 0점인지 미채점인지 구분한다                     |
 | trajectory          | array  | 공 궤적 좌표 시퀀스. { "x": 숫자, "y": 숫자, "frame": 정수 } 객체의 배열이며 원본 영상 해상도 기준 픽셀 좌표. frame은 0부터 시작하는 프레임 번호 |
 | fps                 | float  | 영상의 초당 프레임 수. 프론트엔드가 재생 시간과 궤적을 맞추는 데 사용 |
 | frame_size          | object | 좌표 기준 해상도. { "width": 정수, "height": 정수 } |

@@ -104,9 +104,13 @@ class FrameSize(BaseModel):
 
 class AnalysisResult(BaseModel):
     status: str = Field(description="VALID 또는 ANALYSIS_FAILED")
-    score: int = Field(description="슈팅 점수 0~100")
+    score: int = Field(description="슈팅 점수 0~100. 채점하지 못한 경우에도 0이 들어간다")
+    score_status: str = Field(
+        description="EVALUATED 또는 NOT_EVALUATED. 0점과 미채점을 구분하려면 이 값을 본다")
     speed_kmh: float = Field(description="추정 슈팅 속도 (km/h)")
     goal: bool = Field(description="골인 추정 결과. 골대 밖 통과와 판정 불가가 모두 false로 나간다")
+    goal_status: str = Field(
+        description="GOAL(골대 안쪽 통과), OUTSIDE(바깥쪽 통과), UNDETERMINED(판정 불가)")
     trajectory: List[TrajectoryPoint] = Field(description="공 궤적 좌표 시퀀스")
     fps: float = Field(description="영상의 초당 프레임 수")
     frame_size: FrameSize = Field(description="좌표 기준 해상도")

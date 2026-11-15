@@ -5,6 +5,12 @@
 분석 결과의 모양이 또 바뀌면 이 파일만 고치면 된다.
 """
 
+# 골인 추정 결과. 영상만으로는 확정할 수 없는 경우가 많아 보류가 따로 있다.
+GOAL_STATUS_MAP = {
+    "ESTIMATED_GOAL": "GOAL",
+    "ESTIMATED_OUTSIDE": "OUTSIDE",
+}
+
 # 분석 쪽 실패 사유를 명세에 적힌 네 가지로 옮긴다.
 # 원래 값은 failure_detail로 함께 내보내므로 정보가 사라지지는 않는다.
 FAILURE_REASON_MAP = {
@@ -59,12 +65,19 @@ def to_api_result(raw, started_at, elapsed_sec=None):
     succeeded = raw.get("measurement_status") == "ESTIMATED"
     detail = raw.get("failure_reason")
 
+    goal_status = GOAL_STATUS_MAP.get(physical_goal.get("status"), "UNDETERMINED")
+    scored = (raw.get("score_status") or score_evaluation.get("status")) not in (None, "NOT_EVALUATED")
+
     result = {
         "status": "VALID" if succeeded else "ANALYSIS_FAILED",
         "score": int(score_evaluation.get("value") or raw.get("score") or 0),
+        # 점수를 매기지 못한 경우와 실제로 0점인 경우를 화면이 구분할 수 있게 한다
+        "score_status": "EVALUATED" if scored else "NOT_EVALUATED",
         "speed_kmh": round(float(raw.get("speed") or 0.0), 1),
         # 골인 판정은 추정이며 심판 판정이 아니다. 단정할 수 있을 때만 참으로 둔다
-        "goal": physical_goal.get("status") == "ESTIMATED_GOAL",
+        "goal": goal_status == "GOAL",
+        # goal의 false는 골대 밖 통과와 판정 불가를 모두 포함하므로 상태를 함께 준다
+        "goal_status": goal_status,
         "trajectory": points,
         "fps": round(float(metadata.get("fps") or 0.0), 2),
         "frame_size": {"width": int(metadata.get("width") or 0),
