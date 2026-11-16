@@ -21,3 +21,10 @@ test('partial scores and supplied timing do not appear fully measured', () => {
     assert.match(automaticInputLabel({measurement_context:{timing:{mode:'slow_motion'}}}),/슬로모션/)
     assert.match(automaticInputLabel({camera_model:{intrinsics_calibrated:true}}),/보정 사용/)
 })
+
+test('video points explain available components and no-evidence status', () => {
+    assert.match(scoreBasisLabel({basis:'VIDEO_SPEED_AND_POSITION'}),/40점.*60점/)
+    assert.match(scoreBasisLabel({basis:'VIDEO_SPEED_ONLY'}),/속도 항목만/)
+    assert.match(scoreBasisLabel({basis:'VIDEO_POSITION_ONLY'}),/진입 위치 항목만/)
+    assert.match(scoreWithheldReason({reason:'VIDEO_SCORE_EVIDENCE_REQUIRED'}),/계산 근거가 부족/)
+})

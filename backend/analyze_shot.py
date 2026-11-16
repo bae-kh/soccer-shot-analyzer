@@ -12,14 +12,19 @@ from capture_context import build_context, DEFAULT_AUTOMATIC_OPTIONS
 from trajectory_render import result_image, goal_entry_image
 from goal_entry import assess_goal_entry, goal_camera_interval
 from goal_measurement import assess_physical_goal, score_shot, score_week9
-from automatic_analysis import predict_goal, automatic_comment
+from automatic_analysis import predict_goal, automatic_comment, score_video
 
 
 def _goal_outputs(goal_entry, physical, physics, context):
     goal_entry['physical_goal_status'] = physical['status']
     prediction = predict_goal(physical) if context['analysis_mode'] == 'automatic' else None
     custom_rules = context['options'].get('scoring_rules')
-    score = score_week9(physical, physics) if custom_rules is None else score_shot(physical, physics, custom_rules)
+    if custom_rules is not None:
+        score = score_shot(physical, physics, custom_rules)
+    elif prediction is not None and physical['reason'] == 'GOAL_PLANE_REQUIRED':
+        score = score_video(goal_entry, physics)
+    else:
+        score = score_week9(physical, physics)
     return prediction, score
 
 class HybridTracker:

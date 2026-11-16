@@ -1,7 +1,7 @@
 import copy
 import unittest
 
-from backend.automatic_analysis import predict_goal, automatic_comment
+from backend.automatic_analysis import predict_goal, automatic_comment, score_video
 from backend.capture_context import build_context, DEFAULT_AUTOMATIC_OPTIONS, ROOT, validate_options
 from backend.goal_entry import assess_goal_entry
 from backend.goal_measurement import assess_physical_goal, score_week9
@@ -96,6 +96,46 @@ class AutomaticGoalTests(unittest.TestCase):
             prediction = predict_goal({'status': status, 'events': []})
             self.assertEqual(prediction['status'], 'UNDETERMINED')
             self.assertEqual(prediction['reason'], 'GOAL_CROSSING_EVIDENCE_REQUIRED')
+
+
+class VideoScoreTests(unittest.TestCase):
+    def test_speed_and_screen_position_use_original_weights(self):
+        physics = {'speed': 60., 'measurement_status': 'ESTIMATED', 'speed_basis': 'ASSUMPTION_BASED'}
+        event = {'entry_image_position_normalized': [.75, .75], 'first_inside_frame': 3}
+        entry = {'status': 'CANDIDATE_OBSERVED', 'events': [event]}
+        result = score_video(entry, physics)
+        self.assertEqual((result['value'], result['max_points'], result['basis']), (50, 100, 'VIDEO_SPEED_AND_POSITION'))
+        self.assertEqual(result['components']['speed_points'], 20)
+        self.assertEqual(result['components']['position_points'], 30)
+        self.assertEqual(result['components']['entry_frame'], 3)
+        self.assertFalse(result['partial'])
+        self.assertFalse(result['candidate_used_as_goal'])
+
+    def test_single_components_keep_their_caps_and_distinguish_zero_from_missing(self):
+        physics = {'speed': 10., 'measurement_status': 'ESTIMATED'}
+        speed = score_video({'status': 'UNAVAILABLE'}, physics)
+        position = score_video({'status': 'CANDIDATE_OBSERVED', 'events': [
+            {'entry_image_position_normalized': [.5, .5]}]}, {})
+        self.assertEqual((speed['value'], speed['max_points'], speed['basis']), (0, 40, 'VIDEO_SPEED_ONLY'))
+        self.assertEqual((position['value'], position['max_points'], position['basis']), (0, 60, 'VIDEO_POSITION_ONLY'))
+        self.assertTrue(speed['partial'])
+        self.assertTrue(position['partial'])
+        self.assertIsNone(speed['components']['position_points'])
+        self.assertIsNone(position['components']['speed_points'])
+
+    def test_missing_or_unusable_inputs_leave_no_score(self):
+        for status, position in [('UNAVAILABLE', [.5, .5]), ('CANDIDATE_OBSERVED', [float('nan'), .5]),
+                                 ('CANDIDATE_OBSERVED', [1.2, .5])]:
+            result = score_video({'status': status, 'events': [{'entry_image_position_normalized': position}]},
+                                 {'speed': 65, 'measurement_status': 'UNAVAILABLE'})
+            self.assertIsNone(result['value'])
+            self.assertEqual(result['reason'], 'VIDEO_SCORE_EVIDENCE_REQUIRED')
+
+    def test_speed_claim_retains_capture_mismatch_warning(self):
+        result = score_video({}, {'speed': 140, 'measurement_status': 'ESTIMATED',
+            'measurement_context': {'assumptions': ['SAMPLE_CAPTURE_REPORT_DIFFERS_FROM_AUTOMATIC_DEFAULTS']}})
+        self.assertEqual(result['value'], 40)
+        self.assertIn('기록된 촬영 조건', result['comment'])
 
 
 if __name__ == '__main__':

@@ -55,6 +55,9 @@ export function scoreBasisLabel(score) {
         MEASURED_PLANE_OUTSIDE: '골대 밖 통과 추정 기준',
         USER_DEFINED_TARGET: '사용자 지정 목표 위치 기준',
         USER_DEFINED_OUTSIDE: '사용자 지정 골대 밖 기준',
+        VIDEO_SPEED_AND_POSITION: '추정 속도 40점 · 화면상 진입 위치 60점',
+        VIDEO_SPEED_ONLY: '추정 속도 항목만 계산',
+        VIDEO_POSITION_ONLY: '화면상 진입 위치 항목만 계산',
         SPEED_ONLY: '이전 방식 · 속도 기준 일부 항목',
         IMAGE_ACCURACY_ONLY: '이전 방식 · 골대 중심 기준 일부 항목',
         SPEED_AND_IMAGE_ACCURACY: '이전 방식 · 속도 40% · 골대 중심 60%',
@@ -70,6 +73,7 @@ export function scoreWithheldReason(score) {
         SPEED_ESTIMATE_REQUIRED: '종합 점수에 필요한 속도를 계산하지 못했습니다.',
         SPEED_BASIS_UNVERIFIED: '종합 점수에는 촬영 시간과 카메라 보정을 확인한 속도가 필요합니다.',
         BALL_RADIUS_ASSUMPTION_MISMATCH: '골라인과 속도 계산에 사용한 공 크기가 다릅니다.',
+        VIDEO_SCORE_EVIDENCE_REQUIRED: '속도와 화면상 진입 위치 모두에 계산 근거가 부족합니다.',
     }[score?.reason] || '종합 점수에 필요한 근거가 부족합니다.'
 }
 
