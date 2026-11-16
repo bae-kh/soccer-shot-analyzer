@@ -85,7 +85,7 @@ export default function CaptureSettings({ options, onChange, profileRevision }) 
             <p className="text-xs text-slate-400">자동 모드는 기본 화각으로 속도를 추정합니다. 보정 자료와 실제 촬영 조건을 입력하면 계산 조건을 더 정확하게 맞출 수 있습니다.</p>
             <details className="border border-slate-600 rounded-lg p-3">
                 <summary className="cursor-pointer text-amber-300">골대 실측 · 참고 점수 설정 (선택)</summary>
-                <p className="text-xs mt-3">자동 모드는 영상 관측으로 골인 가능성과 참고 점수를 계산합니다. 골라인 면을 측정한 경우 설정 파일을 불러와 별도로 분석할 수 있습니다.</p>
+                <p className="text-xs mt-3">자동 모드는 추정 속도와 화면상 진입 위치로 영상 참고 점수를 계산합니다. 골라인을 측정한 경우 설정 파일을 불러와 통과 여부를 추정할 수 있습니다.</p>
                 <label className="block mt-3">측정 설정 파일
                     <input type="file" accept=".json,application/json" className="block w-full mt-2" onChange={importConfig} />
                 </label>

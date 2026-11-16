@@ -14,6 +14,23 @@ sys.path.insert(0, str(ROOT/'backend'))
 
 
 class AnalyzerGoalContractTests(unittest.TestCase):
+    def test_video_score_is_only_a_fallback_for_automatic_without_a_measured_plane(self):
+        from analyze_shot import _goal_outputs
+        entry = {'status': 'CANDIDATE_OBSERVED', 'events': [{'entry_image_position_normalized': [.75, .75]}]}
+        physics = {'speed': 60., 'measurement_status': 'ESTIMATED', 'speed_basis': 'ASSUMPTION_BASED'}
+        physical = {'status': 'UNDETERMINED', 'reason': 'GOAL_PLANE_REQUIRED'}
+        auto = {'analysis_mode': 'automatic', 'options': {}}
+        prediction, score = _goal_outputs(entry, physical, physics, auto)
+        self.assertEqual((prediction['status'], score['value'], score['rule_set_id']),
+                         ('UNDETERMINED', 50, 'week10_video_v1'))
+        for changed_physical, changed_options in (
+                (physical, {**auto, 'analysis_mode': 'calibrated'}),
+                (physical, {**auto, 'options': {'scoring_rules': RULES}}),
+                ({**physical, 'reason': 'CAMERA_MOVING'}, auto)):
+            _, score = _goal_outputs(entry, changed_physical, physics, changed_options)
+            self.assertIsNone(score['value'])
+            self.assertNotEqual(score['rule_set_id'], 'week10_video_v1')
+
     def test_both_modes_use_the_new_default_and_keep_explicit_custom_rules(self):
         from analyze_shot import _goal_outputs
         from goal_measurement import assess_physical_goal

@@ -93,6 +93,10 @@ def to_api_result(raw, started_at, elapsed_sec=None):
         "score": int(score_evaluation.get("value") or raw.get("score") or 0),
         # 점수를 매기지 못한 경우와 실제로 0점인 경우를 화면이 구분할 수 있게 한다
         "score_status": "EVALUATED" if scored else "NOT_EVALUATED",
+        # 채점 근거가 일부만 모이면 만점이 100보다 작아진다. 속도를 재지 못하면
+        # 속도 몫이 통째로 빠지므로, 만점을 함께 보내지 않으면 낮은 점수로 읽힌다.
+        "score_max": round(float(score_evaluation.get("max_points") or 100), 1),
+        "score_partial": bool(score_evaluation.get("partial")),
         "speed_kmh": round(float(raw.get("speed") or 0.0), 1),
         # 골인 판정은 추정이며 심판 판정이 아니다. 단정할 수 있을 때만 참으로 둔다
         "goal": goal_status == "GOAL",

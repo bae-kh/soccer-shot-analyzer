@@ -266,6 +266,14 @@ def goal_crossing_event(physical):
     return event
 
 
+def speed_score_fraction(speed, rules):
+    return min(1., max(0., (speed - rules['speed_min_kmh']) / (rules['speed_max_kmh'] - rules['speed_min_kmh'])))
+
+
+def outer_position_fraction(u, v):
+    return math.hypot(u - .5, v - .5) / math.sqrt(.5)
+
+
 def score_week9(physical, physics):
     """Default score: a measured crossing and both required inputs, or no total."""
     result = {'status': 'NOT_EVALUATED', 'value': None, 'rule_set_id': WEEK9_RULES['id'],
@@ -297,8 +305,8 @@ def score_week9(physical, physics):
         if not (_number(goal_radius) and _number(speed_radius) and math.isclose(goal_radius, speed_radius, abs_tol=1e-9)):
             return held('BALL_RADIUS_ASSUMPTION_MISMATCH')
         u, v = event['crossing_normalized']
-        speed01 = min(1., max(0., (speed-rules['speed_min_kmh']) / (rules['speed_max_kmh']-rules['speed_min_kmh'])))
-        position01 = math.hypot(u-.5, v-.5)/math.sqrt(.5)
+        speed01 = speed_score_fraction(speed, rules)
+        position01 = outer_position_fraction(u, v)
         value = 100*(rules['speed_weight']*speed01 + rules['accuracy_weight']*position01)
         basis = 'MEASURED_PLANE_OUTER_DISTANCE'
         components = {'speed_normalized': speed01, 'position_normalized': position01,

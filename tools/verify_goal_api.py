@@ -33,12 +33,16 @@ def main():
             assert result['speed'] > 0 and result['speed_basis'] == 'ASSUMPTION_BASED'
             assert result['goal_prediction']['status'] == 'UNDETERMINED'
             assert result['goal_prediction']['reason'] == 'GOAL_PLANE_REQUIRED'
+            assert result['score_status'] == 'PROVISIONAL' and 0 <= result['score'] <= 100
+            assert result['score_evaluation']['rule_set_id'] == 'week10_video_v1'
+            assert result['score_evaluation']['basis'] == 'VIDEO_SPEED_AND_POSITION'
+            assert result['score_evaluation']['max_points'] == 100
         else:
             assert result['speed'] is None and result['measurement_status'] == 'UNAVAILABLE'
-        assert result['score'] is None and result['score_status'] == 'NOT_EVALUATED'
-        assert result['score_evaluation']['value'] is None
-        assert result['score_evaluation']['rule_set_id'] == 'week9_outer_v1'
-        assert result['score_evaluation']['reason'] == 'GOAL_PLANE_REQUIRED'
+            assert result['score'] is None and result['score_status'] == 'NOT_EVALUATED'
+            assert result['score_evaluation']['rule_set_id'] == 'week9_outer_v1'
+            assert result['score_evaluation']['reason'] == 'GOAL_PLANE_REQUIRED'
+        assert result['score'] == result['score_evaluation']['value']
         assert result['goal_entry']['status'] == 'CANDIDATE_OBSERVED'
         assert result['goal_entry']['physical_goal_status'] == 'UNDETERMINED'
         assert result['physical_goal']['status'] == 'UNDETERMINED'
@@ -48,9 +52,13 @@ def main():
             assert result[key] == saved[key]
         status, image_body = request(service.app, '/results/'+result['goal_entry_image'], decode=False)
         assert status == 200 and len(image_body) > 1000 and image_body.startswith(b'\xff\xd8')
+        preview_status, preview_body = request(service.app, '/results/'+result['trajectory_image'], decode=False)
+        assert preview_status == 200 and len(preview_body) > 1000 and preview_body.startswith(b'\xff\xd8')
+        assert preview_body == (args.output/result['trajectory_image']).read_bytes()
     artifact = {'method': 'actual_multipart_asgi_sse_and_yolo_csrt', 'models_mocked': False,
                 'video': str(source.resolve()),
                 'result_image_get_status': status, 'result': result,
+                'trajectory_image_get_status': preview_status,
                 'progress_events': sum(e['type'] == 'progress' for e in events)}
     assert artifact['progress_events'] > 0
     (args.output/'api_validation.json').write_text(json.dumps(artifact,ensure_ascii=False,indent=2),encoding='utf-8')

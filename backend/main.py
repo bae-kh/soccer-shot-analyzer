@@ -114,6 +114,10 @@ class AnalysisResult(BaseModel):
     score: int = Field(description="슈팅 점수 0~100. 채점하지 못한 경우에도 0이 들어간다")
     score_status: str = Field(
         description="EVALUATED 또는 NOT_EVALUATED. 0점과 미채점을 구분하려면 이 값을 본다")
+    score_max: float = Field(
+        description="score의 만점. 채점 근거가 일부만 모이면 100보다 작아진다")
+    score_partial: bool = Field(
+        description="참이면 일부 근거로만 채점한 것이다. score_max가 100보다 작다")
     speed_kmh: float = Field(description="추정 슈팅 속도 (km/h)")
     goal: bool = Field(description="골인 추정 결과. 골대 밖 통과와 판정 불가가 모두 false로 나간다")
     goal_status: str = Field(
