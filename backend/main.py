@@ -310,10 +310,19 @@ async def create_analysis(
     # 그 값을 촬영 조건의 보정 선택 항목으로 옮겨 담는다.
     from capture_context import validate_options
 
+    # 값을 비워 보내도 빈 문자열이나 공백이 오는 경우가 있어 없는 것으로 본다
+    raw_options = (capture_options or "").strip()
+    profile_id = (calibration_id or "").strip()
+
     try:
-        options = json.loads(capture_options) if capture_options else {}
-        if calibration_id:
-            options["intrinsics_profile_id"] = calibration_id
+        try:
+            options = json.loads(raw_options) if raw_options else {}
+        except ValueError:
+            raise ValueError("capture_options는 JSON 문자열이어야 합니다")
+        if not isinstance(options, dict):
+            raise ValueError("capture_options는 JSON 객체여야 합니다")
+        if profile_id:
+            options["intrinsics_profile_id"] = profile_id
         options = validate_options(options) if options else None
     except (ValueError, TypeError) as e:
         logger.warning("분석 요청 거절: 촬영 조건이 올바르지 않음 → 422 (%s)", e)
