@@ -102,6 +102,13 @@ class FrameSize(BaseModel):
     height: int
 
 
+class GoalArea(BaseModel):
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
+
 class AnalysisResult(BaseModel):
     status: str = Field(description="VALID 또는 ANALYSIS_FAILED")
     score: int = Field(description="슈팅 점수 0~100. 채점하지 못한 경우에도 0이 들어간다")
@@ -132,13 +139,6 @@ class AnalysisResult(BaseModel):
         description="status가 ANALYSIS_FAILED일 때만 포함. "
                     "BALL_NOT_DETECTED, TRACK_TOO_SHORT, FIT_FAILED, LOW_CONFIDENCE",
     )
-
-
-class GoalArea(BaseModel):
-    x1: float
-    y1: float
-    x2: float
-    y2: float
 
 
 class AnalysisProgress(BaseModel):
