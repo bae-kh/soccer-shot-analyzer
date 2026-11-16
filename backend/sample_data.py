@@ -27,12 +27,14 @@ def _arc(points, start, end, lift, frame_step=1):
 
 def _result(status, score=0, speed_kmh=0.0, trajectory=None, confidence=0.0,
             comment="", frame_size=None, failure_reason=None, image="sample_result.jpg",
-            processing_time=0.0):
+            processing_time=0.0, goal_status="UNDETERMINED", score_status="NOT_EVALUATED"):
     data = {
         "status": status,
         "score": score,
+        "score_status": score_status,
         "speed_kmh": speed_kmh,
-        "goal": False,
+        "goal": goal_status == "GOAL",
+        "goal_status": goal_status,
         "trajectory": trajectory or [],
         "fps": FPS,
         "frame_size": frame_size or LANDSCAPE,
@@ -99,14 +101,26 @@ def seed_samples(jobs, calibrations):
         trajectory=_arc(25, (940, 905), (1486, 452), lift=150),
         confidence=0.82, comment="아마추어를 뛰어넘은 멋진 슈팅! 🔥",
         processing_time=34.2, image="sample_valid_result.jpg",
+        goal_status="GOAL", score_status="EVALUATED",
+    ))
+
+    # 분석은 성공했으나 골대 면 정보가 없어 골인 판정과 채점을 보류한 경우.
+    # 실제 분석에서 지금 가장 흔하게 나오는 결과다.
+    jobs["sample-undetermined"] = _done(_result(
+        "VALID", score=0, speed_kmh=81.8,
+        trajectory=_arc(19, (930, 880), (1402, 498), lift=130),
+        confidence=0.77, comment="초기 비행 구간의 속도 추정입니다.",
+        processing_time=26.4, image="sample_undetermined_result.jpg",
+        goal_status="UNDETERMINED", score_status="NOT_EVALUATED",
     ))
 
     # 세로 영상. 좌표 환산을 확인할 때 쓴다
     jobs["sample-portrait"] = _done(_result(
-        "VALID", score=61, speed_kmh=79.4,
+        "VALID", score=0, speed_kmh=79.4,
         trajectory=_arc(21, (540, 1620), (812, 889), lift=180),
-        confidence=0.74, comment="더 강하게 찰 수 있습니다! 화이팅! 💨",
+        confidence=0.74, comment="골대를 벗어났습니다. 방향을 조금만 더 안쪽으로! 💨",
         frame_size=PORTRAIT, processing_time=28.9, image="sample_portrait_result.jpg",
+        goal_status="OUTSIDE", score_status="EVALUATED",
     ))
 
     # 공을 끝내 찾지 못한 경우. 궤적이 비어 있다

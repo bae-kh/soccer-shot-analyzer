@@ -55,8 +55,9 @@ uvicorn main:app
 
 | id                        | 조회 경로                               | 내용                                 |
 | ------------------------- | --------------------------------------- | ------------------------------------ |
-| sample-valid              | /analyses/sample-valid/result           | 정상 분석. 궤적 25점, 가로 영상      |
-| sample-portrait           | /analyses/sample-portrait/result        | 정상 분석. 세로 영상(1080x1920)      |
+| sample-valid              | /analyses/sample-valid/result           | 골인 성공. 78점, 궤적 25점           |
+| sample-undetermined       | /analyses/sample-undetermined/result    | 골인 판정 보류. 속도만 나온 가장 흔한 경우 |
+| sample-portrait           | /analyses/sample-portrait/result        | 골대 밖 통과로 0점. 세로 영상(1080x1920) |
 | sample-no-ball            | /analyses/sample-no-ball/result         | 실패. BALL_NOT_DETECTED, 궤적 없음   |
 | sample-low-confidence     | /analyses/sample-low-confidence/result  | 실패. LOW_CONFIDENCE, 궤적 일부 포함 |
 | sample-track-short        | /analyses/sample-track-short/result     | 실패. TRACK_TOO_SHORT                |
