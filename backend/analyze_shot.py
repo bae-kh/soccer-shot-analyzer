@@ -293,8 +293,11 @@ class ProShootingAnalyzer:
         motion_start = summary['shot_start_frame'] or 0
         physical_fps = measurement_context['timing']['effective_capture_fps']
         motion_end = min(len(tracker.records) - 1, motion_start + round((physical_fps or fps) * .45))
-        camera_motion = assess_camera_motion(video_path, motion_start, motion_end)
-        physics = estimate_shot(trajectory, metadata, self.camera, camera_motion)
+        def assess_speed_motion(segment):
+            end = segment['end_frame']
+            return assess_camera_motion(video_path, motion_start, max(motion_end, end) if end is not None else motion_end)
+
+        physics = estimate_shot(trajectory, metadata, self.camera, assess_motion=assess_speed_motion)
         summary['flight_observations'] = physics['flight_segment'].get('point_count', 0)
         # The goal rectangle was detected near the start, so the early speed
         # window's camera check is insufficient for a later region entry.
