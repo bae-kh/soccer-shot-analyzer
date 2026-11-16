@@ -31,12 +31,24 @@ SAMPLE_DATA=1 uvicorn main:app
 
 ### 분석까지 띄우기
 
-실제 영상 분석을 돌릴 때다. opencv와 ultralytics를 포함해 용량이 크다.
+실제 영상 분석을 돌릴 때다. **배포된 서버에서는 분석이 동작하지 않으므로, 영상을 올려 결과를 보려면 이 방법을 써야 한다.** 설치 용량이 2GB 정도로 크다.
+
+**파이썬은 3.12를 쓴다.** scipy가 3.13용 설치 파일을 제공하지 않아, 3.13에서는 소스 빌드로 넘어가면서 설치가 실패한다.
 
 pip install -r requirements.txt
 uvicorn main:app
 
-**이 경우 분석 모델 파일이 따로 필요하다.** backend 폴더에 yolov8s.pt와 골대 탐지 모델이 있어야 한다. 저장소에 포함되어 있지 않으므로 AI 파트에서 받아야 한다. 모델이 없으면 업로드와 검증까지는 동작하지만 분석 단계에서 실패한다.
+**모델 파일은 저장소에 포함되어 있다.** backend 폴더의 yolov8s.pt와 goal_segment_best.pt이며 따로 받을 필요가 없다.
+
+**설치 후 아래를 확인한다.**
+
+python -c "import cv2; print(cv2.__version__, hasattr(cv2, 'TrackerCSRT_create'))"
+
+**4.13.0과 True가 나와야 한다.** 공 추적에 opencv의 추가 기능 묶음(contrib)이 필요한데, 다른 버전의 opencv가 이미 설치되어 있으면 그쪽이 우선해 추적 단계에서 중단된다. False가 나오면 아래로 맞춘다.
+
+pip install opencv-contrib-python==4.13.0.92
+
+분석 한 번에 20초 안팎이 걸리고 메모리를 1GB 가까이 쓴다.
 
 ### 스웨거
 
