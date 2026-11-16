@@ -139,9 +139,15 @@ frontend/dist/
 .DS_Store
 Thumbs.db
 
-# Exceptions must follow the broad *.txt / test_*.py rules above.
-!backend/requirements.txt
+# 아래 예외는 위의 넓은 *.txt / test_*.py 규칙보다 뒤에 와야 한다.
+
+# 의존성 목록은 로그 파일이 아니므로 *.txt 규칙에서 제외한다
+!**/requirements.txt
+!**/requirements-api.txt
 !backend/requirements-ai.txt
+
+# 백엔드 API 검증 코드는 일회성 스크립트가 아니므로 예외로 둔다
+!backend/test_api.py
 !tests/test_ai_baseline.py
 !tests/test_ball_tracking.py
 !tests/test_shot_physics.py

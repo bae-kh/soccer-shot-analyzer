@@ -3,6 +3,7 @@ import { goalPresentation, physicalGoalPresentation, scoreBasisLabel, scoreWithh
 export default function Result({ data, onReset }) {
     const hasSpeed = typeof data.speed === 'number' && Number.isFinite(data.speed) && data.measurement_status !== 'UNAVAILABLE'
     const hasScore = typeof data.score === 'number' && Number.isFinite(data.score)
+    const videoScore = data.score_evaluation?.rule_set_id === 'week10_video_v1'
     const automatic = data.analysis_mode === 'automatic'
     const goal = goalPresentation(data.goal_entry)
     const physical = physicalGoalPresentation(data.physical_goal)
@@ -62,9 +63,9 @@ export default function Result({ data, onReset }) {
             <div className="grid grid-cols-2 gap-4 w-full mb-6 relative">
                 <div className="bg-slate-800 border border-slate-700/50 p-5 rounded-xl text-center shadow-inner relative overflow-hidden">
                     <div className="absolute -right-4 -top-4 w-16 h-16 bg-cyan-500/10 rounded-full blur-xl"></div>
-                    <p className="text-sm text-slate-400 mb-1 font-light tracking-wider">{data.score_status === 'PROVISIONAL' ? '참고 점수 · 실측 미검증' : '종합 점수'}</p>
+                    <p className="text-sm text-slate-400 mb-1 font-light tracking-wider">{videoScore ? '영상 참고 점수' : data.score_status === 'PROVISIONAL' ? '참고 점수 · 실측 미검증' : '종합 점수'}</p>
                     <div className="text-4xl font-black text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]">
-                        {hasScore ? data.score : '미평가'}{hasScore && <span className="text-lg text-slate-500 ml-1">점</span>}
+                        {hasScore ? data.score : '미평가'}{hasScore && <span className="text-lg text-slate-400 ml-1">{videoScore ? `/ ${data.score_evaluation.max_points}점` : '점'}</span>}
                     </div>
                     <p className="text-xs text-slate-400 mt-2">{hasScore ? scoreBasisLabel(data.score_evaluation) : scoreWithheldReason(data.score_evaluation)}</p>
                     {hasScore && data.score_evaluation?.rule_set_id && <p className="text-xs text-slate-400 mt-1">규칙: {data.score_evaluation.rule_set_id}</p>}

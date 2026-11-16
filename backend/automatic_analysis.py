@@ -1,8 +1,60 @@
-"""Compatibility presentation for the automatic analysis mode."""
+"""Video-based reference points and goal presentation for automatic analysis."""
+import math
+
 try:
-    from .goal_measurement import goal_crossing_event
+    from .goal_measurement import WEEK9_RULES, goal_crossing_event, outer_position_fraction, speed_score_fraction
 except ImportError:
-    from goal_measurement import goal_crossing_event
+    from goal_measurement import WEEK9_RULES, goal_crossing_event, outer_position_fraction, speed_score_fraction
+
+
+VIDEO_RULES = {**{key: WEEK9_RULES[key] for key in (
+    'speed_min_kmh', 'speed_max_kmh', 'speed_weight', 'accuracy_weight')},
+    'id': 'week10_video_v1', 'accuracy_basis': 'image_region_entry_outer_distance'}
+
+
+def score_video(goal_entry, physics):
+    """Score present observations at their original weights, without inferring goal or miss."""
+    speed = physics.get('speed')
+    has_speed = (physics.get('measurement_status') == 'ESTIMATED'
+                 and type(speed) in (int, float) and math.isfinite(speed) and speed > 0)
+    events = goal_entry.get('events') or []
+    event = events[0] if goal_entry.get('status') == 'CANDIDATE_OBSERVED' and events else {}
+    position = event.get('entry_image_position_normalized')
+    has_position = (isinstance(position, (list, tuple)) and len(position) == 2
+                    and all(type(p) in (float, int) and 0 <= p <= 1 for p in position))
+    rules = VIDEO_RULES
+    speed_max = 100 * rules['speed_weight']
+    position_max = 100 * rules['accuracy_weight']
+    speed_points = speed_max * speed_score_fraction(speed, rules) if has_speed else None
+    position_points = position_max * outer_position_fraction(*position) if has_position else None
+    max_points = speed_max * has_speed + position_max * has_position
+    components = {
+        'speed_points': round(speed_points, 1) if has_speed else None,
+        'speed_kmh': speed if has_speed else None,
+        'speed_basis': physics.get('speed_basis') if has_speed else None,
+        'position_points': round(position_points, 1) if has_position else None,
+        'entry_image_position_normalized': list(position) if has_position else None,
+        'entry_frame': event.get('first_inside_frame') if has_position else None,
+    }
+    result = {'status': 'NOT_EVALUATED', 'value': None, 'rule_set_id': rules['id'],
+              'reason': 'VIDEO_SCORE_EVIDENCE_REQUIRED', 'basis': None, 'max_points': max_points,
+              'components': components, 'rules': dict(rules), 'partial': False,
+              'accuracy_validated': False, 'candidate_used_as_goal': False}
+    if not max_points:
+        return result
+    if has_speed and has_position:
+        basis, label = 'VIDEO_SPEED_AND_POSITION', '속도와 화면상 진입 위치'
+    elif has_speed:
+        basis, label = 'VIDEO_SPEED_ONLY', '속도 항목'
+    else:
+        basis, label = 'VIDEO_POSITION_ONLY', '화면상 진입 위치 항목'
+    comment = f'영상 참고 점수의 계산 근거는 {label}입니다.'
+    if has_speed and 'SAMPLE_CAPTURE_REPORT_DIFFERS_FROM_AUTOMATIC_DEFAULTS' in (
+            physics.get('measurement_context', {}).get('assumptions', [])):
+        comment += ' 기록된 촬영 조건과 속도 계산의 기본 가정이 다릅니다.'
+    return {**result, 'status': 'PROVISIONAL', 'reason': 'VIDEO_BASED_REFERENCE_SCORE',
+            'value': round((components['speed_points'] or 0) + (components['position_points'] or 0), 1),
+            'basis': basis, 'partial': not (has_speed and has_position), 'comment': comment}
 
 
 def predict_goal(physical):
@@ -32,5 +84,8 @@ def automatic_comment(prediction, physics, score):
         if physics.get('speed_basis') == 'ASSUMPTION_BASED':
             comment += ' 촬영 조건 가정에 따른 속도 추정값입니다.'
     if score['value'] is not None:
-        comment += f" 참고 점수는 {score['value']:.1f}점입니다."
+        if score['rule_set_id'] == VIDEO_RULES['id']:
+            comment += f" 영상 참고 점수는 {score['max_points']:g}점 만점에 {score['value']:.1f}점입니다."
+        else:
+            comment += f" 참고 점수는 {score['value']:.1f}점입니다."
     return comment

@@ -4,6 +4,12 @@ import argparse
 import os
 import json
 
+# 보정 계산에 필요한 최소 체스보드 검출 프레임 수
+MIN_VALID_FRAMES = 5
+# 재투영 오차가 이 값을 넘으면 보정값을 믿을 수 없다고 본다
+MAX_RMS_ERROR = 2.0
+
+
 def calibrate_camera(video_path, output_json=None, chessboard_size=(9, 6), square_size_m=0.025, max_frames=50):
     """
     Calibrate a camera using a video of a chessboard sequence.
@@ -35,7 +41,7 @@ def calibrate_camera(video_path, output_json=None, chessboard_size=(9, 6), squar
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"[ERROR] Could not open video: {video_path}")
-        return False
+        return {"ok": False, "failure_reason": "VIDEO_OPEN_FAILED", "used_frames": 0}
         
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     print(f"[INFO] Total frames in video: {total_frames}")
@@ -108,17 +114,18 @@ def calibrate_camera(video_path, output_json=None, chessboard_size=(9, 6), squar
         
     cap.release()
     cv2.destroyAllWindows()
-    
-    if img_size is None or valid_captures < 5:
-         print(f"[ERROR] Not enough valid chessboard frames found ({valid_captures}/5 required). Please record a slower, clearer video covering multiple angles.")
-         return False
-         
+
+    # 체스보드를 한 번도 못 찾은 경우와 몇 장만 찾은 경우는 사용자에게 줄 안내가 다르다
+    if img_size is None or valid_captures == 0:
+         print("[ERROR] Chessboard not found in any sampled frame.")
+         return {"ok": False, "failure_reason": "CHESSBOARD_NOT_FOUND", "used_frames": 0}
+
+    if valid_captures < MIN_VALID_FRAMES:
+         print(f"[ERROR] Not enough valid chessboard frames found ({valid_captures}/{MIN_VALID_FRAMES} required). Please record a slower, clearer video covering multiple angles.")
+         return {"ok": False, "failure_reason": "NOT_ENOUGH_FRAMES", "used_frames": valid_captures}
+
     print(f"\n[INFO] Calibration using {valid_captures} valid images...")
-    
-    if len(objpoints) == 0 or len(imgpoints) == 0:
-         print("[ERROR] No points extracted for calibration.")
-         return False
-         
+
     # Perform Calibration 
     # Mtx: Camera matrix (Intrinsic parameters K)
     # dist: Distortion coefficients
@@ -143,22 +150,25 @@ def calibrate_camera(video_path, output_json=None, chessboard_size=(9, 6), squar
                 "valid_views": valid_captures,
                 "calibration_scope": "intrinsics_only_same_camera_lens_zoom"
             }
-            
+
             try:
                  with open(output_json, 'w', encoding='utf-8') as f:
                      json.dump(calib_data, f, indent=4)
                  print(f"\n[SUCCESS] Calibration saved to {output_json}")
-                 return True
             except Exception as e:
                  print(f"[ERROR] Failed to write JSON: {e}")
-                 return False
+                 return {"ok": False, "failure_reason": "SAVE_FAILED", "used_frames": valid_captures}
+
+            return {"ok": True, "used_frames": valid_captures, **calib_data}
         else:
+            # 계산 자체가 실패한 경우와 오차가 커서 믿을 수 없는 경우를 함께 처리한다
             print("[ERROR] Calibration is invalid or RMS error exceeds 2 pixels.")
-            return False
-            
+            return {"ok": False, "failure_reason": "CALIBRATION_FAILED", "used_frames": valid_captures}
+
+
     except Exception as e:
         print(f"[ERROR] OpenCV calibrateCamera crashed: {e}")
-        return False
+        return {"ok": False, "failure_reason": "CALIBRATION_FAILED", "used_frames": valid_captures}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Calibrate Camera using Chessboard Video")
