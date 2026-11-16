@@ -27,6 +27,26 @@ FAILURE_REASON_MAP = {
 }
 
 
+
+def _goal_area(raw):
+    """골대 사각형. 궤적과 같은 원본 영상 좌표계다."""
+    area = raw.get("goal_area") or {}
+    bbox = area.get("bbox")
+    if not bbox or len(bbox) != 4:
+        return None
+    x1, y1, x2, y2 = (round(float(v), 1) for v in bbox)
+    return {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
+
+
+def _first_event_frame(section, key):
+    """판정 근거가 된 프레임. 판정을 못 했으면 사건 자체가 없다."""
+    events = (section or {}).get("events") or []
+    if not events:
+        return None
+    value = events[0].get(key)
+    return int(value) if value is not None else None
+
+
 def _trajectory(raw):
     """추적 기록을 좌표와 프레임 번호만 남긴 형태로 줄인다."""
     points = []
@@ -87,6 +107,11 @@ def to_api_result(raw, started_at, elapsed_sec=None):
             elapsed_sec if elapsed_sec is not None else time.time() - started_at, 1),
         "trajectory_image": raw.get("trajectory_image") or "",
         "comment": raw.get("comment") or "",
+        # 화면에서 골대를 그리고 궤적을 어디까지 보여줄지 정하는 데 쓴다.
+        # 골대를 찾지 못했거나 판정이 서지 않으면 각각 null이 된다.
+        "goal_area": _goal_area(raw),
+        "goal_entry_frame": _first_event_frame(raw.get("goal_entry"), "confirmation_frame"),
+        "goal_line_frame": _first_event_frame(raw.get("physical_goal"), "behind_frame"),
     }
 
     if not succeeded:

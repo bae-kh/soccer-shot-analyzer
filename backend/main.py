@@ -118,11 +118,27 @@ class AnalysisResult(BaseModel):
     processing_time_sec: float = Field(description="분석 소요 시간 (초)")
     trajectory_image: str = Field(description="결과 오버레이 이미지 파일명")
     comment: str
+    goal_area: Optional[GoalArea] = Field(
+        default=None,
+        description="골대 사각형. 궤적과 같은 원본 영상 좌표계. 골대를 못 찾으면 null")
+    goal_entry_frame: Optional[int] = Field(
+        default=None,
+        description="공이 골대 영역에 들어온 프레임. 판정이 서지 않으면 null")
+    goal_line_frame: Optional[int] = Field(
+        default=None,
+        description="공이 골라인을 넘은 프레임. 골대 실측 정보가 있어야 채워진다")
     failure_reason: Optional[str] = Field(
         default=None,
         description="status가 ANALYSIS_FAILED일 때만 포함. "
                     "BALL_NOT_DETECTED, TRACK_TOO_SHORT, FIT_FAILED, LOW_CONFIDENCE",
     )
+
+
+class GoalArea(BaseModel):
+    x1: float
+    y1: float
+    x2: float
+    y2: float
 
 
 class AnalysisProgress(BaseModel):

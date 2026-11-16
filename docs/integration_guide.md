@@ -220,6 +220,9 @@ complete 이벤트의 data와 결과 조회의 200 응답이 같은 형태다.
 | processing_time_sec | float  | 분석 소요 시간                       |
 | trajectory_image    | string | 결과 이미지 파일명                   |
 | comment             | string | 속도 구간별 코멘트                   |
+| goal_area           | object | 골대 사각형 { x1, y1, x2, y2 }. 못 찾으면 null |
+| goal_entry_frame    | int    | 공이 골대 영역과 겹치기 시작한 프레임. 없으면 null |
+| goal_line_frame     | int    | 공이 골라인을 넘은 프레임. 없으면 null |
 | failure_reason      | string | status가 ANALYSIS_FAILED일 때만 포함 |
 
 실제 응답 예시다.
@@ -424,6 +427,10 @@ GOAL_NOT_DETECTED 코드도 정의되어 있으나 골인 판정 로직이 없�
 | NOT_EVALUATED | 채점하지 못함. score의 0은 의미 없음 |
 
 **지금은 대부분 UNDETERMINED와 NOT_EVALUATED로 온다.** 골대 면 정보가 들어가면 판정과 채점이 나온다.
+
+**궤적을 어디까지 그릴지 정할 때 주의한다.** goal_entry_frame은 **화면에서 공이 골대 사각형과 겹치기 시작한 프레임**이며, 공이 실제로 골대에 도달한 시점보다 이르다. 골대는 멀리 있고 공은 그 앞을 날아가는 중이기 때문이다. 실제 도달 시점은 goal_line_frame이지만 골대 실측 정보가 있어야 채워진다.
+
+goal_area는 궤적과 같은 원본 영상 좌표계이므로 영상 위에 그대로 겹쳐 그릴 수 있다.
 
 **서버를 재시작하면 진행 중이거나 끝난 작업을 조회할 수 없다.** 작업 정보를 서버 메모리에 두기 때문이다. 영상 파일은 7일 남지만 id로 찾을 수 없게 된다. **배포된 서버는 15분 동안 요청이 없으면 잠들면서 같은 일이 일어나므로, 작업을 만들고 한참 뒤에 조회하면 404가 날 수 있다.** 저장된 보정도 함께 사라진다.
 
