@@ -1,5 +1,7 @@
 # API Specification
 
+Base URL (배포): https://jun-3s--soccer-shot-api-fastapi-app.us-east.modal.run
+
 Base URL (개발 환경): http://localhost:8000
 
 CORS: 모든 origin/method/header 허용 (backend/main.py CORSMiddleware 설정 기준)
