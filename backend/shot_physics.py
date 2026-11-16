@@ -70,9 +70,8 @@ def select_flight(trajectory, fps, width, height):
         return [], {'reason': 'NO_SHOT', 'start_frame': None, 'end_frame': None, 'point_count': 0,
                     'excluded_observations': [], 'motion_confirmed': False}
     start = trajectory[0]['frame_number']
-    window = [r for r in trajectory if r['frame_number']-start <= math.floor(fps*.45 + 1e-9)]
     candidates, excluded = [], []
-    for row in window:
+    for row in trajectory:
         rejection = _metric_rejection(row, width, height)
         if rejection:
             excluded.append({'frame_number': row['frame_number'], 'reason': rejection})
@@ -84,14 +83,22 @@ def select_flight(trajectory, fps, width, height):
     anchor_diameter = (_diameter(trajectory[0]) if trajectory[0].get('ball_bbox')
                        else (_diameter(candidates[0]) if candidates else 10))
     onset = _flight_onset(candidates, np.array(anchor, dtype=float), anchor_diameter, fps) if candidates else None
+    window_end = (start if onset is None else onset) + math.floor(fps*.45 + 1e-9)
     selected, directions, last = [], [], None
-    reason = 'EARLY_WINDOW_LIMIT' if onset is not None else 'NO_CONFIRMED_FLIGHT'
+    reason = 'TRACKING_ENDED' if onset is not None else 'NO_CONFIRMED_FLIGHT'
+    stop_frame = None
     candidate_numbers = {r['frame_number'] for r in candidates}
-    for row in window:
+    for row in trajectory:
+        if row['frame_number'] > window_end:
+            if onset is not None:
+                reason = 'EARLY_WINDOW_LIMIT'
+                stop_frame = row['frame_number']
+            break
+        if last is not None and (row['frame_number']-last['frame_number'])/fps > .13:
+            reason = 'OBSERVATION_GAP'
+            stop_frame = row['frame_number']
+            break
         if row['frame_number'] not in candidate_numbers:
-            if last is not None and (row['frame_number']-last['frame_number'])/fps > .13:
-                reason = 'OBSERVATION_GAP'
-                break
             continue
         if onset is None or row['frame_number'] < onset:
             excluded.append({'frame_number': row['frame_number'], 'reason': 'PRE_FLIGHT_OR_UNCONFIRMED_MOTION'})
@@ -99,24 +106,31 @@ def select_flight(trajectory, fps, width, height):
         center = np.array(row['raw_center'], dtype=float)
         if last is not None:
             dt = (row['frame_number'] - last['frame_number']) / fps
-            if dt > .13:
-                reason = 'OBSERVATION_GAP'
-                break
-            velocity = (center - np.array(last['raw_center'])) / dt
+            displacement = center - np.array(last['raw_center'])
+            # shortcut: near-identical boxes proxy repeated samples until source frame timing is available.
+            if np.linalg.norm(displacement) <= 1 and abs(math.log(_diameter(row)/_diameter(last))) <= .03:
+                excluded.append({'frame_number': row['frame_number'], 'reason': 'NEAR_DUPLICATE_OBSERVATION'})
+                continue
+            velocity = displacement / dt
             travel = np.linalg.norm(velocity) / fps
             if travel > math.hypot(width, height) * .15:
                 reason = 'POSITION_JUMP'
+                stop_frame = row['frame_number']
                 break
             if len(directions) >= 2 and travel > 3:
                 reference = np.median(directions[-3:], axis=0)
                 if np.dot(reference, velocity) < -.2 * np.linalg.norm(reference) * np.linalg.norm(velocity):
                     reason = 'POSSIBLE_CONTACT_OR_DIRECTION_CHANGE'
+                    stop_frame = row['frame_number']
                     break
             if travel > 3:
                 directions.append(velocity)
         selected.append(row)
         last = row
-    return selected, {'reason': reason, 'start_frame': selected[0]['frame_number'] if selected else None,
+    diagnostic_end = min(window_end, stop_frame) if stop_frame is not None else window_end
+    excluded = [row for row in excluded if row['frame_number'] <= diagnostic_end]
+    return selected, {'reason': reason, 'stop_frame': stop_frame,
+                      'start_frame': selected[0]['frame_number'] if selected else None,
                       'end_frame': selected[-1]['frame_number'] if selected else None,
                       'point_count': len(selected), 'scope': 'early_flight_candidate_not_confirmed_collision',
                       'max_window_sec': .45, 'tracking_start_frame': start, 'motion_confirmed': onset is not None,
@@ -162,7 +176,7 @@ def _fit(points, times, confidence, radii, camera, measured, angles):
     return fit, fitted, speed * 3.6, sigma_speed * 3.6
 
 
-def estimate_shot(trajectory, metadata, camera, camera_motion=None):
+def estimate_shot(trajectory, metadata, camera, camera_motion=None, *, assess_motion=None):
     context = metadata.get('measurement_context')
     physical_fps = context['timing']['effective_capture_fps'] if context else None
     if physical_fps is not None:
@@ -173,6 +187,8 @@ def estimate_shot(trajectory, metadata, camera, camera_motion=None):
                              else 'file_playback_time; physical_timing_unverified')
     if context and context.get('timing', {}).get('status') == 'ASSUMED_NORMAL':
         segment['time_basis'] = 'normal_speed_assumed_from_file_fps'
+    if assess_motion is not None:
+        camera_motion = assess_motion(segment)
     motion = camera_motion or {'status': 'UNVERIFIED'}
     warnings = list(camera.warnings) + ['BALL_BBOX_SIZE_APPROXIMATION', 'FIXED_CAMERA_REQUIRED', 'NO_GROUND_TRUTH_SPEED']
     if camera.gravity_source == 'assumed_camera_down':
