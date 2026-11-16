@@ -40,7 +40,7 @@ SAMPLE_DATA=1 uvicorn main:app
 pip install -r requirements.txt
 uvicorn main:app
 
-**모델 파일은 저장소에 포함되어 있다.** backend 폴더의 yolov8s.pt와 goal_segment_best.pt이며 따로 받을 필요가 없다.
+**모델 파일이 따로 필요하다.** backend 폴더에 yolov8s.pt와 goal_segment_best.pt가 있어야 한다. 용량이 커서 저장소에 포함하지 않으므로 AI 파트에서 받는다. 모델이 없으면 업로드와 검증까지는 동작하지만 분석 단계에서 실패한다.
 
 **설치 후 아래를 확인한다.**
 
