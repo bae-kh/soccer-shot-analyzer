@@ -129,6 +129,14 @@ class AnalysisResult(BaseModel):
     processing_time_sec: float = Field(description="분석 소요 시간 (초)")
     trajectory_image: str = Field(description="결과 오버레이 이미지 파일명")
     comment: str
+    flight_start_frame: Optional[int] = Field(
+        default=None, description="속도를 잰 비행 구간의 시작 프레임")
+    flight_end_frame: Optional[int] = Field(
+        default=None, description="속도를 잰 비행 구간의 끝 프레임")
+    flight_end_reason: Optional[str] = Field(
+        default=None,
+        description="구간이 끝난 이유. EARLY_WINDOW_LIMIT(0.45초 한도, 공은 더 날아갔을 수 있음), "
+                    "OBSERVATION_GAP(관측 끊김), TRACKING_ENDED(추적 종료)")
     goal_area: Optional[GoalArea] = Field(
         default=None,
         description="골대 사각형. 궤적과 같은 원본 영상 좌표계. 골대를 못 찾으면 null")

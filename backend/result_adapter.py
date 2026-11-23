@@ -28,6 +28,13 @@ FAILURE_REASON_MAP = {
 
 
 
+
+def _flight(raw, key):
+    """속도 계산에 쓴 비행 구간의 프레임 번호."""
+    value = (raw.get("flight_segment") or {}).get(key)
+    return int(value) if value is not None else None
+
+
 def _goal_area(raw):
     """골대 사각형. 궤적과 같은 원본 영상 좌표계다."""
     area = raw.get("goal_area") or {}
@@ -113,6 +120,12 @@ def to_api_result(raw, started_at, elapsed_sec=None):
         "comment": raw.get("comment") or "",
         # 화면에서 골대를 그리고 궤적을 어디까지 보여줄지 정하는 데 쓴다.
         # 골대를 찾지 못했거나 판정이 서지 않으면 각각 null이 된다.
+        # 속도를 잰 비행 구간. 궤적을 어디까지 보여줄지 정할 때 참고한다.
+        # 다만 차고 난 직후 0.45초까지만 보는 구간이므로 공이 끝까지 날아간
+        # 범위와 다를 수 있다. 끝난 이유를 함께 보내 화면이 판단하게 한다.
+        "flight_start_frame": _flight(raw, "start_frame"),
+        "flight_end_frame": _flight(raw, "end_frame"),
+        "flight_end_reason": (raw.get("flight_segment") or {}).get("reason"),
         "goal_area": _goal_area(raw),
         "goal_entry_frame": _first_event_frame(raw.get("goal_entry"), "confirmation_frame"),
         "goal_line_frame": _first_event_frame(raw.get("physical_goal"), "behind_frame"),
