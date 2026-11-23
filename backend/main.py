@@ -68,7 +68,8 @@ CHESSBOARD_SQUARE_M = 0.025
 # 분석 작업과 보정 작업 상태. 서버 메모리에만 두므로 재시작하면 사라진다
 jobs = {}
 calibrations = {}
-TERMINAL_STATUSES = {"VALID", "ANALYSIS_FAILED", "ERROR"}
+# 더 기다릴 필요가 없는 상태. 진행률 구독은 여기에 닿으면 스트림을 닫는다
+TERMINAL_STATUSES = {"VALID", "ANALYSIS_FAILED", "ERROR", "CANCELLED"}
 
 # 연동용 예시 작업. 기본은 꺼져 있고 SAMPLE_DATA=1 일 때만 채운다
 SAMPLE_DATA_ENABLED = os.getenv("SAMPLE_DATA") == "1"
@@ -385,6 +386,11 @@ async def create_analysis(
         try:
             raw = process_video_with_progress(file_path, output_image_path, on_progress,
                                               capture_options=options)
+            # 분석 도중 취소되었으면 결과를 버린다. CV 처리 루프를 중간에
+            # 끊는 것이 어려워 분석은 끝까지 돌리고 결과만 폐기한다.
+            if analysis_id not in jobs or jobs[analysis_id]["status"] == "CANCELLED":
+                logger.info("[%s] 취소된 작업이라 결과를 버림", short_id)
+                return
             # 분석 결과를 프론트엔드가 쓰는 응답 형식으로 바꾼다
             result = to_api_result(raw, started)
             jobs[analysis_id]["result"] = result
@@ -395,8 +401,9 @@ async def create_analysis(
                         result.get("failure_reason", ""), time.time() - started)
         except Exception as e:
             logger.exception("[%s] 분석 중 예외: %s", short_id, e)
-            jobs[analysis_id]["status"] = "ERROR"
-            jobs[analysis_id]["error"] = str(e)
+            if analysis_id in jobs and jobs[analysis_id]["status"] != "CANCELLED":
+                jobs[analysis_id]["status"] = "ERROR"
+                jobs[analysis_id]["error"] = str(e)
 
     # 구독 여부와 무관하게 분석이 끝까지 진행되도록 요청과 분리해 실행한다
     asyncio.get_running_loop().run_in_executor(None, run_analysis)
@@ -523,7 +530,9 @@ async def analysis_events(analysis_id: str):
             await asyncio.sleep(0.2)
 
         # 이미 끝난 작업에 뒤늦게 붙은 경우에도 지난 진행률 없이 결과만 바로 받는다
-        if job["status"] == "ERROR":
+        if job["status"] == "CANCELLED":
+            yield f"data: {json.dumps({'type': 'cancelled'})}\n\n"
+        elif job["status"] == "ERROR":
             yield f"data: {json.dumps({'type': 'failed', 'message': job['error']})}\n\n"
         else:
             yield f"data: {json.dumps({'type': 'complete', 'data': job['result']})}\n\n"
@@ -551,6 +560,12 @@ def analysis_result(analysis_id: str):
             content={"error_code": "JOB_NOT_FOUND", "message": "분석 작업을 찾을 수 없습니다"},
         )
 
+    if job["status"] == "CANCELLED":
+        return JSONResponse(
+            status_code=404,
+            content={"error_code": "ANALYSIS_CANCELLED", "message": "취소된 분석입니다"},
+        )
+
     if job["status"] not in TERMINAL_STATUSES:
         return JSONResponse(
             status_code=202,
@@ -564,6 +579,67 @@ def analysis_result(analysis_id: str):
         )
 
     return JSONResponse(status_code=200, content=job["result"])
+
+class CancelResponse(BaseModel):
+    status: str = Field(description="CANCELLED 또는 ALREADY_FINISHED")
+    message: str
+
+
+@app.delete(
+    "/analyses/{analysis_id}",
+    tags=["분석"],
+    summary="분석 작업 취소",
+    description=(
+        "분석 작업을 취소하고 보관 중인 영상과 결과를 지운다.\n\n"
+        "**진행 중인 분석은 즉시 멈추지 않는다.** 영상을 프레임 단위로 도는 처리를 중간에 끊으면 "
+        "파일이 반쯤 쓰이거나 모델이 어중간한 상태로 남을 수 있어, 분석은 끝까지 두고 "
+        "**결과만 폐기한다.** 취소한 시점부터 진행률과 결과를 더는 받을 수 없다.\n\n"
+        "구독 중이던 연결에는 cancelled 이벤트가 가고 스트림이 닫힌다. "
+        "이미 끝난 작업을 취소하면 결과와 영상을 지우고 ALREADY_FINISHED를 돌려준다."
+    ),
+    responses={
+        200: {"model": CancelResponse, "description": "취소됨 또는 이미 끝나 있었음"},
+        404: {"model": ErrorResponse, "description": "JOB_NOT_FOUND"},
+    },
+)
+def cancel_analysis(analysis_id: str):
+    job = jobs.get(analysis_id)
+    if job is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error_code": "JOB_NOT_FOUND", "message": "분석 작업을 찾을 수 없습니다"},
+        )
+
+    short_id = analysis_id[:8]
+    was_running = job["status"] not in TERMINAL_STATUSES
+
+    # 구독 중인 연결이 상태를 보고 스트림을 닫도록 먼저 표시한다
+    job["status"] = "CANCELLED"
+    job["result"] = None
+
+    # 원본 영상과 결과 이미지는 취소했으면 남겨 둘 이유가 없다
+    video_path = job.get("video_path")
+    if video_path and os.path.isfile(video_path):
+        base = os.path.splitext(os.path.basename(video_path))[0]
+        for name in os.listdir(UPLOAD_DIR):
+            if name.startswith(base):
+                try:
+                    os.remove(os.path.join(UPLOAD_DIR, name))
+                except OSError as e:
+                    logger.warning("[%s] 파일 삭제 실패: %s (%s)", short_id, name, e)
+
+    logger.info("[%s] 분석 취소 (%s)", short_id, "진행 중이던 작업" if was_running else "이미 끝난 작업")
+
+    if was_running:
+        return JSONResponse(content={
+            "status": "CANCELLED",
+            "message": "분석을 취소했습니다. 진행 중인 처리는 끝까지 돌지만 결과는 저장되지 않습니다",
+        })
+    return JSONResponse(content={
+        "status": "ALREADY_FINISHED",
+        "message": "이미 끝난 분석입니다. 결과와 영상을 삭제했습니다",
+    })
+
 
 @app.get(
     "/analyses/{analysis_id}/video",
@@ -586,6 +662,12 @@ def analysis_video(analysis_id: str):
         return JSONResponse(
             status_code=404,
             content={"error_code": "JOB_NOT_FOUND", "message": "분석 작업을 찾을 수 없습니다"},
+        )
+
+    if job["status"] == "CANCELLED":
+        return JSONResponse(
+            status_code=404,
+            content={"error_code": "ANALYSIS_CANCELLED", "message": "취소된 분석입니다"},
         )
 
     path = job.get("video_path")

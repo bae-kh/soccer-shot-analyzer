@@ -138,6 +138,7 @@ POST /analyses/demo?outcome=no-ball&seconds=10
 2. GET /analyses/{id}/events 로 진행률을 구독한다
 3. complete 이벤트로 결과를 받는다
 4. 필요하면 GET /analyses/{id}/video 로 원본 영상을, GET /results/{파일명} 으로 결과 이미지를 가져온다
+5. 그만두려면 DELETE /analyses/{id} 로 취소한다. 올린 영상과 결과가 삭제된다
 
 구독을 안 하거나 중간에 끊어도 **분석은 서버에서 끝까지 진행된다.** 나중에 다시 구독하면 지난 진행률 없이 결과만 즉시 받는다.
 
@@ -169,6 +170,7 @@ multipart/form-data로 보낸다. 영상 외에 두 값을 함께 보낼 수 있
 | keepalive | 진행률 변화가 없는 동안     | { "type": "keepalive" }                   |
 | complete  | 분석이 끝났을 때            | { "type": "complete", "data": 결과 객체 } |
 | failed    | 분석 자체를 수행 못 한 경우 | { "type": "failed", "message": "..." }    |
+| cancelled | 취소된 작업을 구독한 경우   | { "type": "cancelled" }                  |
 
 **complete와 failed의 구분 기준**이 중요하다. 분석 파이프라인이 끝까지 실행되면 공을 못 찾았든 신뢰도가 낮든 **complete로 온다.** 결과 객체의 status가 ANALYSIS_FAILED가 되고 failure_reason에 원인이 담긴다. failed는 모델 로드 실패처럼 분석을 시작조차 못 한 경우에만 온다.
 
@@ -195,7 +197,25 @@ complete나 failed를 받으면 서버가 스트림을 닫는다. 받은 쪽에�
 
 보관 기간 7일이 지나 파일이 정리되면 id가 살아 있어도 VIDEO_NOT_FOUND가 온다.
 
-### 2.5 GET /results/{파일명}
+### 2.5 DELETE /analyses/{id}
+
+분석을 취소하고 올린 영상과 결과를 지운다.
+
+**진행 중인 분석이 즉시 멈추지는 않는다.** 영상을 한 프레임씩 도는 처리를 중간에 끊으면 파일이 반쯤 쓰일 수 있어, 분석은 끝까지 두고 **결과만 버린다.** 취소한 시점부터 진행률과 결과를 더는 받을 수 없다.
+
+| 상태 코드 | 내용                                                   |
+| --------- | ------------------------------------------------------ |
+| 200       | { "status": "CANCELLED", "message": "..." }            |
+| 200       | { "status": "ALREADY_FINISHED", "message": "..." }      |
+| 404       | 없는 id                                                |
+
+진행 중이던 작업이면 CANCELLED, 이미 끝나 있었으면 ALREADY_FINISHED가 온다. 어느 쪽이든 영상과 결과 이미지는 삭제된다.
+
+**구독 중이던 연결에는 cancelled 이벤트가 가고 스트림이 닫힌다.** 2.2의 이벤트 표를 참고한다.
+
+취소한 뒤 결과나 영상을 조회하면 404와 함께 ANALYSIS_CANCELLED가 온다. 없는 id(JOB_NOT_FOUND)와 구분된다.
+
+### 2.6 GET /results/{파일명}
 
 결과 오버레이 이미지를 돌려준다. 결과 객체의 trajectory_image 값을 그대로 경로에 넣는다.
 
@@ -357,6 +377,7 @@ capture_fps와 slowdown_factor는 timing_mode가 slow_motion일 때만 받는다
 | 상태 코드 | error_code            | 조건                           |
 | --------- | --------------------- | ------------------------------ |
 | 404       | JOB_NOT_FOUND         | 없는 분석 id                   |
+| 404       | ANALYSIS_CANCELLED    | 취소된 분석의 결과나 영상 조회 |
 | 404       | VIDEO_NOT_FOUND       | 영상이 보관 기간 경과로 삭제됨 |
 | 404       | IMAGE_NOT_FOUND       | 없는 결과 이미지               |
 | 404       | CALIBRATION_NOT_FOUND | 없는 보정 id                   |
@@ -448,8 +469,6 @@ goal_area는 궤적과 같은 원본 영상 좌표계이므로 영상 위에 그
 TRACKING_ENDED면 그 프레임까지가 실제로 추적한 전부이므로 그대로 써도 된다. EARLY_WINDOW_LIMIT이면 뒤가 더 있을 수 있으므로 화면에서 따로 판단해야 한다.
 
 **서버를 재시작하면 진행 중이거나 끝난 작업을 조회할 수 없다.** 작업 정보를 서버 메모리에 두기 때문이다. 영상 파일은 7일 남지만 id로 찾을 수 없게 된다. **배포된 서버는 15분 동안 요청이 없으면 잠들면서 같은 일이 일어나므로, 작업을 만들고 한참 뒤에 조회하면 404가 날 수 있다.** 저장된 보정도 함께 사라진다.
-
-**분석 취소 기능이 없다.** 화면에서 연결을 끊으면 더 이상 진행률을 받지 않지만, 서버 쪽 분석은 끝까지 진행된다.
 
 **사용자 구분이 없다.** id를 알면 누구나 조회할 수 있다. 로그인이나 권한 확인이 없다.
 
